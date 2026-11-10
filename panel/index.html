@@ -20,12 +20,13 @@
         <label for="sampling-interval">Sampling interval (sec) <span class="muted">(1–60)</span></label>
         <input id="sampling-interval" type="number" min="1" max="60" step="1" value="2">
       </div>
-      <table aria-label="GPU metrics to display">
+      <table aria-label="Metrics to display">
         <thead><tr><th scope="col">Metric</th><th scope="col">Bar</th><th scope="col">Graph</th></tr></thead>
         <tbody id="metric-options"></tbody>
       </table>
     </div>
     <p id="notice" role="status" aria-live="polite">Connecting to OpenChamber…</p>
+    <section id="system" class="card" hidden></section>
     <div id="devices"></div>
     <section id="jobs" hidden aria-labelledby="jobs-title">
       <div class="section-heading">

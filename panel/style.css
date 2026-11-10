@@ -44,12 +44,13 @@ h2, h3 { font-size: 14px; line-height: 1.4; }
   }
 }
 .card { border: 1px solid var(--line); border-radius: 9px; padding: 10px; min-width: 0; }
+#system { margin-bottom: 8px; }
 .card-heading { margin-bottom: 8px; }
 .card-heading p { text-align: right; overflow-wrap: anywhere; }
 .device-label { white-space: nowrap; }
 .metric { font-size: 11px; margin-top: 5px; font-variant-numeric: tabular-nums; }
 .metric-label strong { text-align: right; }
-[data-metric="vram"] { --metric-color: var(--memory); }
+[data-metric="vram"], [data-metric="ram"] { --metric-color: var(--memory); }
 [data-metric="mbw"] { --metric-color: var(--oc-success, #3d9d77); }
 [data-metric="temperature"] { --metric-color: var(--oc-error, #cf6551); }
 [data-metric="power"] { --metric-color: var(--oc-warning, #b4873e); }
@@ -75,10 +76,11 @@ td { white-space: nowrap; }
 .command-name { display: block; max-width: min(38vw, 520px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 td small { display: block; color: var(--muted); }
 .process-table td { vertical-align: top; }
-#root[data-stale="true"] #devices, #root[data-stale="true"] #jobs { opacity: .65; }
+#root[data-stale="true"] :is(#system, #devices, #jobs) { opacity: .65; }
 [data-surface="status"] #root { padding: 7px 10px; }
 [data-surface="status"] #toolbar { display: none; }
 [data-surface="status"] #notice { margin-bottom: 4px; }
+[data-surface="status"] #system { border: 0; padding: 0; margin-bottom: 5px; font-size: 11px; }
 [data-surface="status"] #devices { gap: 5px; }
 .status-row { display: grid; grid-template-columns: auto minmax(44px, 1fr) auto; align-items: center; gap: 8px; font-size: 11px; }
 .status-row .track { margin: 0; }

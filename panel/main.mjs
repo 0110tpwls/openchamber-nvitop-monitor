@@ -10,6 +10,7 @@ const byId = (id) => document.getElementById(id);
 const root = byId("root");
 const notice = byId("notice");
 const devices = byId("devices");
+const systemCard = byId("system");
 const host = connectHost();
 
 const element = (tag, className, text) => {
@@ -29,7 +30,7 @@ const duration = (seconds) => {
 };
 const percent = (n) => Math.max(0, Math.min(100, n));
 
-const METRICS = {
+const GPU_METRICS = {
   util: { label: "GPU utilization", unit: "%", read: (gpu) => gpu.util },
   vram: {
     label: "VRAM", unit: "%", read: fraction,
@@ -45,7 +46,20 @@ const METRICS = {
   },
   fan: { label: "Fan", unit: "%", read: (gpu) => gpu.fan },
 };
-const DEFAULT_METRICS = { bars: ["util", "vram", "mbw", "temperature", "power"], graphs: ["util"] };
+const SYSTEM_METRICS = {
+  cpu: { label: "Host CPU", unit: "%", read: (system) => system.cpu },
+  ram: {
+    label: "System RAM", unit: "%", read: (system) => system.memoryPercent,
+    display: (system) => `${gib(system.memoryUsed)} / ${gib(system.memoryTotal)} · ${value(system.memoryPercent, "%")}`,
+  },
+};
+const METRICS = { ...GPU_METRICS, ...SYSTEM_METRICS };
+const SYSTEM_IDS = Object.keys(SYSTEM_METRICS);
+const SYSTEM_HISTORY = Symbol("system");
+const DEFAULT_METRICS = {
+  bars: ["util", "vram", "mbw", "temperature", "power", ...SYSTEM_IDS],
+  graphs: ["util", ...SYSTEM_IDS],
+};
 
 function bar(n) {
   const track = element("div", "track");
@@ -103,18 +117,25 @@ function historyLine(id, gpu, samples, end) {
   return chart;
 }
 
+function appendMetrics(card, data, samples, timestamp, selected, scope) {
+  const bars = selected.bars.filter((id) => Object.hasOwn(scope, id));
+  const graphIds = selected.graphs.filter((id) => Object.hasOwn(scope, id));
+  card.append(...bars.map((id) => metricBar(id, data)));
+  if (graphIds.length) {
+    const graphs = element("div", "graphs");
+    graphs.append(element("p", "muted", "Last 2 min"),
+      ...graphIds.map((id) => historyLine(id, data, samples, timestamp)));
+    card.append(graphs);
+  }
+  return bars.length > 0 || graphIds.length > 0;
+}
+
 function gpuCard(device, children, samples, timestamp, selected) {
   const card = element("section", "card");
   const heading = element("div", "card-heading");
   heading.append(element("h2", "device-label", device.label), element("p", "muted", device.name ?? "—"));
   card.append(heading);
-  card.append(...selected.bars.map((id) => metricBar(id, device)));
-  if (selected.graphs.length) {
-    const graphs = element("div", "graphs");
-    graphs.append(element("p", "muted", "Last 2 min"),
-      ...selected.graphs.map((id) => historyLine(id, device, samples, timestamp)));
-    card.append(graphs);
-  }
+  appendMetrics(card, device, samples, timestamp, selected, GPU_METRICS);
 
   for (const child of children) {
     const partition = element("section", "mig");
@@ -184,7 +205,7 @@ function start(context) {
             if (item.input.checked) selected[item.kind].push(item.id);
           }
           if (latest) renderCards(latest);
-          void host.storage.set(SETTINGS_KEY, selected).catch(() => {});
+          void host.storage.set(SETTINGS_KEY, { ...selected, systemMetrics: true }).catch(() => {});
         });
         const cell = element("td");
         cell.append(input);
@@ -197,7 +218,7 @@ function start(context) {
       if (stopped || changed || !Array.isArray(saved?.bars) || !Array.isArray(saved?.graphs)) return;
       selected = { bars: [], graphs: [] };
       for (const { input, kind, id } of inputs) {
-        input.checked = saved[kind].includes(id);
+        input.checked = saved[kind].includes(id) || (!saved.systemMetrics && SYSTEM_IDS.includes(id));
         if (input.checked) selected[kind].push(id);
       }
       if (latest) renderCards(latest);
@@ -259,6 +280,10 @@ function start(context) {
         return row;
       }));
       if (ranked.length > 3) devices.append(element("p", "muted", `Top 3 of ${ranked.length} GPUs by utilization`));
+      systemCard.hidden = !sample.system;
+      if (sample.system) {
+        systemCard.textContent = `Host CPU ${value(sample.system.cpu, "%")} · System RAM ${value(sample.system.memoryPercent, "%")}`;
+      }
       return;
     }
 
@@ -271,18 +296,30 @@ function start(context) {
   function renderCards(sample, physical = sample.devices.filter((device) => device.parentId === null)) {
     const timestamp = sample.sampledAt;
     const physicalIds = new Set(physical.map((device) => device.id));
+    if (sample.system) physicalIds.add(SYSTEM_HISTORY);
     for (const id of history.keys()) {
       if (!physicalIds.has(id)) history.delete(id);
     }
-    devices.replaceChildren(...physical.map((device) => {
-      const points = (history.get(device.id) ?? [])
+    function record(id, data, scope) {
+      const points = (history.get(id) ?? [])
         .filter((point) => point.time >= timestamp - WINDOW_MS && point.time <= timestamp).slice(-120);
       if (points.at(-1)?.time !== timestamp) {
-        const values = Object.fromEntries(Object.entries(METRICS).map(([id, metric]) => [id, metric.read(device)]));
+        const values = Object.fromEntries(Object.entries(scope).map(([key, metric]) => [key, metric.read(data)]));
         const maxGapMs = Math.max(6_000, samplingSeconds * 2_000 + 1_000);
         points.push({ time: timestamp, values, maxGapMs });
       }
-      history.set(device.id, points);
+      history.set(id, points);
+      return points;
+    }
+    if (sample.system) {
+      const points = record(SYSTEM_HISTORY, sample.system, SYSTEM_METRICS);
+      systemCard.replaceChildren(element("h2", "", "System"));
+      systemCard.hidden = !appendMetrics(systemCard, sample.system, points, timestamp, selected, SYSTEM_METRICS);
+    } else {
+      systemCard.hidden = true;
+    }
+    devices.replaceChildren(...physical.map((device) => {
+      const points = record(device.id, device, GPU_METRICS);
       const children = sample.devices.filter((child) => child.parentId === device.id);
       return gpuCard(device, children, points, timestamp, selected);
     }));

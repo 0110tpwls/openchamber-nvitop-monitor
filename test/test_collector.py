@@ -3,7 +3,7 @@ from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from service.collect import collect, number
+from service.collect import collect, number, system_metrics
 
 
 def device(index, uuid, processes=(), children=()):
@@ -41,6 +41,23 @@ def job(pid, memory):
 
 
 class CollectorTest(unittest.TestCase):
+    def test_system_cpu_and_memory_match_nvitop_host_values(self):
+        host = Mock(PsutilError=RuntimeError)
+        host.cpu_percent.return_value = 0.0
+        host.virtual_memory.return_value = SimpleNamespace(percent=30.1, used=300, total=1000)
+        self.assertEqual(system_metrics(host), {
+            "cpu": 0.0, "memoryPercent": 30.1, "memoryUsed": 300, "memoryTotal": 1000,
+        })
+        host.cpu_percent.assert_called_once_with(interval=0.1)
+
+    def test_unavailable_system_cpu_keeps_memory(self):
+        host = Mock(PsutilError=RuntimeError)
+        host.cpu_percent.side_effect = PermissionError()
+        host.virtual_memory.return_value = SimpleNamespace(percent=0, used=0, total=1000)
+        self.assertEqual(system_metrics(host), {
+            "cpu": None, "memoryPercent": 0, "memoryUsed": 0, "memoryTotal": 1000,
+        })
+
     def test_mig_processes_use_partition_identity(self):
         same_pid = job(7, 1024)
         mig = device((0, 1), "MIG-test", [same_pid])

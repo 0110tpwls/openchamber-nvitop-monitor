@@ -15,6 +15,22 @@ def text(value):
     return value[:160] if isinstance(value, str) and value not in ("N/A", "") else None
 
 
+def system_metrics(host):
+    result = {"cpu": None, "memoryPercent": None, "memoryUsed": None, "memoryTotal": None}
+    try:
+        # The collector starts fresh on every request. Measure over a real interval.
+        result["cpu"] = number(host.cpu_percent(interval=0.1))
+    except (OSError, host.PsutilError):
+        pass
+    try:
+        memory = host.virtual_memory()
+        result.update(memoryPercent=number(memory.percent), memoryUsed=number(memory.used),
+                      memoryTotal=number(memory.total))
+    except (OSError, host.PsutilError):
+        pass
+    return result
+
+
 def device_row(device, parent_id=None):
     index = device.index
     label = f"GPU {index}" if parent_id is None else f"GPU {index[0]} / MIG {index[1]}"
@@ -119,7 +135,9 @@ def main():
     try:
         libnvml.nvmlInit()
         try:
-            return collect(Device, GpuProcess, host.PsutilError)
+            sample = collect(Device, GpuProcess, host.PsutilError)
+            sample["system"] = system_metrics(host)
+            return sample
         finally:
             libnvml.nvmlShutdown()
     except libnvml.NVMLError as error:
