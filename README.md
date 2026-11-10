@@ -1,86 +1,39 @@
-# onvitop for OpenChamber
+# nvitop GPU Monitor for OpenChamber
 
-OpenChamber에서 NVIDIA GPU와 GPU를 쓰는 프로세스를 확인하는 읽기 전용 확장입니다. 현재 연결된 **OpenChamber 서버**에서 nvitop Python API로 수집합니다. 예를 들어 Mac의 OpenChamber Desktop에서 Linux GPU 서버에 연결하면 Linux 서버의 GPU가 표시됩니다.
+A read-only NVIDIA GPU and process monitor for OpenChamber, powered by the nvitop Python API. It shows live GPU and MIG metrics, configurable bars and two-minute charts, and a searchable GPU process table. [nvitop](https://github.com/XuehaiPan/nvitop)
 
-## 설치
+## Requirements
 
-**OpenChamber 2.0.1 이상(Web 또는 Desktop)**과 NVIDIA 드라이버가 설치된 **Linux OpenChamber 서버**가 필요합니다. 컨테이너에서 OpenChamber를 실행한다면 컨테이너에 GPU와 NVML이 노출되어야 합니다. 프로세스 이름과 사용자는 서버 프로세스가 해당 PID를 조회할 수 있을 때 표시됩니다. [OpenChamber 확장 설치 문서](https://docs.openchamber.dev/extensions/) · [nvitop 요구사항](https://pypi.org/project/nvitop/#requirements)
+- OpenChamber 2.0.1 or later on Web or Desktop.
+- A Linux machine running the OpenChamber server, with an NVIDIA GPU and a working driver. Run `nvidia-smi` on that machine to check.
+- nvitop installed for the account that runs the OpenChamber server. If the server runs in a container, it also needs access to the GPU and NVML.
 
-1. OpenChamber 서버를 실행하는 계정으로 GPU 서버에 접속해 `nvidia-smi`로 드라이버를 확인합니다. 이미 설치된 nvitop은 그대로 쓸 수 있습니다. 처음 설치한다면 다음 중 하나를 선택합니다.
+## Installation
 
-   ```bash
+1. On the OpenChamber server, use your existing nvitop install or pick one of these commands.
+
+   ```sh
    pixi global install nvitop
-   # 또는 uv tool install nvitop
-   # 또는 pipx install nvitop
+   # or: uv tool install nvitop
+   # or: pipx install nvitop
    ```
 
-2. **Settings → Extensions → Add**에 서버에서 접근 가능한 확장 ZIP 또는 압축을 푼 폴더의 절대 경로를 입력합니다. Git 서버에 리포를 올린 뒤에는 HTTPS 리포 URL도 사용할 수 있습니다. 설치 패키지에 빌드된 패널이 들어 있으므로 GPU 서버에서 npm을 실행할 필요는 없습니다.
-3. **Run a local service** 권한을 승인하고 오른쪽 레일의 **onvitop**을 엽니다. 넓은 화면은 **Extension pages → onvitop**, 요약은 **Work Status → onvitop**에서 볼 수 있습니다.
+   The extension also discovers nvitop installed with pip or in a virtual environment when its launcher is on the server's `PATH`.
 
-기존 폴더 설치를 업데이트하려면 같은 폴더를 새 버전으로 교체한 뒤 OpenChamber 서버를 재시작합니다. ZIP으로 설치했다면 Settings → Extensions에서 이전 패키지를 제거하고 새 ZIP을 추가합니다. 확장 ID는 `openchamber-nvitop`을 유지합니다.
+2. In **Settings → Extensions**, paste this repository URL and click **Add**.
 
-### Python 환경 탐색
+   ```text
+   https://github.com/0110tpwls/openchamber-nvitop-monitor
+   ```
 
-| 설치 방법 | 찾는 경로 |
-| --- | --- |
-| 확장 전용 venv | `~/.local/share/openchamber-nvitop/venv/bin` |
-| Pixi global | `~/.pixi/envs`, `PIXI_HOME`, 서버 PATH에 등록된 Pixi `bin`의 전역 환경 |
-| uv tool | `UV_TOOL_DIR`, `$XDG_DATA_HOME/uv/tools`, `~/.local/share/uv/tools` |
-| pipx | `PIPX_HOME`, `$XDG_DATA_HOME/pipx`, `~/.local/share/pipx`, 구버전의 `~/.local/pipx`, 전역 설치의 `PIPX_GLOBAL_HOME` 또는 `/opt/pipx` |
-| pip, Conda, 기타 venv | 서버 PATH나 `~/.local/bin`에 노출된 `nvitop` 실행 파일의 Python, 마지막으로 PATH의 `python3`와 그 사용자 패키지 |
+   For private access, use `git@github.com:0110tpwls/openchamber-nvitop-monitor.git` with a Git identity that can read the repo. You can also clone the repo and add its absolute path on the server. The panel ships prebuilt. [OpenChamber extension installation](https://docs.openchamber.dev/extensions/#install-one)
 
-OpenChamber 서비스가 로그인 셸의 경로 변수를 전달받지 못하는 경우가 있습니다. 사용자 지정 설치 경로를 쓰고 자동 탐색이 실패하면 **OpenChamber 서버의 PATH**에 `nvitop`이 노출된 `bin` 디렉터리를 추가한 뒤 서버를 재시작합니다. nvitop 설치 위치는 서버와 같은 계정에서 `pixi global list`, `uv tool dir`, `pipx environment`로 확인할 수 있습니다. [Pixi 전역 환경](https://pixi.prefix.dev/latest/global_tools/manifest/) · [uv 저장 경로](https://docs.astral.sh/uv/reference/storage/) · [pipx 경로 설정](https://pipx.pypa.io/latest/how-to/configure-paths.html)
+3. Approve **Run a local service**, then open **nvitop GPU Monitor** on the right rail. Use **Metrics** to choose which bars and charts to display. A compact view is available in **Work Status**.
 
-## 화면과 수집 범위
+If the panel cannot find nvitop, check the account running OpenChamber and make sure the directory containing the `nvitop` launcher is on the **server's** `PATH`. Restart the server after changing its environment.
 
-| 화면 | 표시 항목 |
-| --- | --- |
-| 오른쪽 레일 및 전체 화면 | GPU 사용률, VRAM, 메모리 대역폭(MBW), 온도, 전력(PWR), 팬 속도. **Metrics**에서 현재값 막대와 최근 2분 그래프를 각각 선택합니다. 너비 560px부터 물리 GPU 카드를 한 줄에 최대 두 개 표시합니다. |
-| GPU 프로세스 | PID, GPU 또는 MIG 위치, COMMAND, 사용자, VRAM, 컨텍스트 유형, SM, GPU 메모리 대역폭(GMBW), CPU 사용률, 호스트 메모리 비율(MEM), 경과 시간(TIME). VRAM 상위 256개 컨텍스트를 PID·명령·사용자·GPU로 검색합니다. |
-| Work Status | 사용률 기준 상위 3개 물리 GPU의 사용률과 VRAM 비율, 전체 GPU 컨텍스트 수 |
+## Development
 
-- 샘플은 화면을 보는 동안 약 2초마다 갱신합니다. 패널과 Work Status는 최근 샘플을 공유합니다. 레일이나 전체 화면에서 일시 정지할 수 있습니다. 지표 선택은 저장되며 그래프 이력은 열린 화면에만 유지합니다.
-- MBW는 GPU 메모리가 읽히거나 쓰인 시간의 비율입니다. 전력 막대는 전력 한도 대비 사용량을 표시하고, 전력 그래프는 W 단위입니다. 온도 막대와 그래프는 0–100 °C 범위를 사용합니다. [nvitop Device API](https://nvitop.readthedocs.io/en/latest/api/device.html)
-- PID가 여러 GPU에 있으면 GPU마다 한 행이 표시됩니다. MIG 자식 장치를 열거할 수 있을 때는 자식에서 프로세스를 조회해 부모와의 중복 집계를 피합니다. 물리 GPU와 MIG의 VRAM은 각각 표시합니다.
-- nvitop이 제공하지 않는 값은 `—`로 표시합니다. SM 값은 nvitop 보고값이며, 기기·드라이버에 따라 세부 이용률을 제공하지 않거나 nvitop이 0을 반환할 수 있습니다. CPU는 두 샘플 사이의 프로세스 CPU 시간 증가분을 사용하므로 첫 샘플에는 `—`가 표시되고 여러 코어를 쓰면 100%를 넘을 수 있습니다. TIME은 프로세스 시작 이후 경과 시간입니다. 샘플 오류가 발생하면 마지막 데이터와 샘플 시각, 오류를 함께 보여줍니다. [nvitop GpuProcess API](https://nvitop.readthedocs.io/en/latest/api/process.html)
+Use Node.js 22 or later and Python 3. Run `npm ci` followed by `npm run check` to rebuild the panel and run the tests.
 
-## OpenChamber에서 활용한 기능
-
-| 확장 API | 이 리포에서 쓰는 방식 |
-| --- | --- |
-| `panel`, `page`, `statusSection` | 같은 화면 번들로 레일, 전체 화면, Work Status 요약을 제공합니다. |
-| `service`, `host.serviceRequest` | 샌드박스 iframe이 OpenChamber를 통해 로컬 서비스의 JSON을 요청합니다. 서비스는 `127.0.0.1`과 OpenChamber가 발급한 토큰을 사용하며 고정된 Python 수집기만 실행합니다. |
-| `@openchamber/sdk/ui`, `host.setHeight` | 패널에 OpenChamber 테마를 적용하고 Work Status 섹션을 콘텐츠 높이에 맞춥니다. |
-
-OpenChamber는 배지, 채팅 첨부, 명령 및 세션 제어도 지원합니다. 예를 들어 확장에 VRAM 경고 배지를 추가하거나 사용자가 선택한 GPU 스냅샷을 채팅에 첨부할 수 있습니다. 이 버전의 권한 범위는 로컬 읽기 전용 수집 서비스입니다. COMMAND에는 첫 번째 명령 항목(`argv[0]`)만 표시하며, 해당 항목을 읽을 수 없으면 프로세스 이름을 표시합니다. 장기간 지표를 저장하려면 nvitop 프로젝트의 Prometheus exporter를 별도로 사용할 수 있습니다. [OpenChamber SDK](https://docs.openchamber.dev/sdk/) · [Host API](https://docs.openchamber.dev/sdk/host/) · [nvitop exporter](https://github.com/XuehaiPan/nvitop/tree/main/nvitop-exporter)
-
-## 유사 확장과의 차이
-
-| 확장 | 데이터와 초점 |
-| --- | --- |
-| onvtop | `nvstats-service`를 Linux의 D-Bus 또는 원격 HTTP로 조회합니다. 공유 GPU 메모리와 vLLM·Ollama 등 로컬 추론 모델 카드가 특징입니다. |
-| System Monitor | OpenChamber 서버의 CPU·RAM·GPU·디스크를 폭넓게 보여줍니다. 운영체제별 도구를 호출하며 Linux NVIDIA 지표에는 `nvidia-smi`를 사용합니다. |
-| onvitop | Linux NVIDIA 서버에서 nvitop/NVML의 물리 GPU, MIG, GPU 프로세스 지표를 읽습니다. 별도 원격 모니터링 데몬 없이 OpenChamber 서버 연결을 사용합니다. |
-
-[onvtop](https://github.com/DAE51D/openchamber-onvtop) · [System Monitor](https://github.com/fuchs-alexander/openchamber-system-monitor) · [OpenChamber 확장 디렉터리](https://openchamber.dev/extensions/)
-
-## 개발 및 확인
-
-Node.js 22 이상, npm, Python 3이 필요합니다.
-
-```bash
-npm ci
-npm run check
-```
-
-`panel/main.js`는 빌드된 브라우저 번들입니다. 패널을 수정한 뒤 `npm run build`로 갱신하고 함께 커밋합니다. GPU 서버에서 수집기만 확인하려면 리포 루트에서 nvitop이 설치된 Python으로 실행합니다. 아래 예시는 확장 전용 venv를 사용하는 경우입니다.
-
-```bash
-python3 -m venv "$HOME/.local/share/openchamber-nvitop/venv"
-"$HOME/.local/share/openchamber-nvitop/venv/bin/python3" -m pip install -r requirements.txt
-"$HOME/.local/share/openchamber-nvitop/venv/bin/python3" -E service/collect.py
-```
-
-`NVML_UNAVAILABLE`이 나오면 OpenChamber 서버와 같은 환경에서 `nvidia-smi`를 확인합니다.
-
-번들에 포함된 OpenChamber SDK의 라이선스는 [OPENCHAMBER-SDK-LICENSE](OPENCHAMBER-SDK-LICENSE)에 있습니다.
+The bundled OpenChamber SDK is covered by the [SDK license](OPENCHAMBER-SDK-LICENSE).

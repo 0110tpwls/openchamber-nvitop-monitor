@@ -1,9 +1,9 @@
 {
-  "name": "onvitop",
-  "version": "0.1.3",
+  "name": "openchamber-nvitop-monitor",
+  "version": "0.1.4",
   "private": true,
   "type": "module",
-  "description": "Read-only NVIDIA GPU and process monitor for OpenChamber",
+  "description": "Read-only NVIDIA GPU and process monitor for OpenChamber, powered by nvitop",
   "scripts": {
     "build": "esbuild panel/main.mjs --bundle --format=iife --platform=browser --minify --legal-comments=inline --outfile=panel/main.js",
     "test": "node --test && python3 -m unittest discover -s test",
@@ -21,14 +21,14 @@
     "contributes": {
       "panel": {
         "id": "openchamber-nvitop",
-        "name": "onvitop",
+        "name": "nvitop GPU Monitor",
         "icon": "icon.svg",
         "entry": "panel/index.html"
       },
       "page": true,
       "statusSection": {
         "entry": "panel/index.html",
-        "title": "onvitop",
+        "title": "nvitop GPU Monitor",
         "height": 130
       },
       "service": {
@@ -41,5 +41,9 @@
         }
       }
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0110tpwls/openchamber-nvitop-monitor.git"
   }
 }

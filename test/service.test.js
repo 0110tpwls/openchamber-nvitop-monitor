@@ -8,7 +8,7 @@ import { parseManifestJson } from "@openchamber/sdk/schemas";
 import { collectWithPython, createCpuTracker, createGpuService, createSampler, pythonCandidates } from "../service/main.js";
 
 async function temporaryHome(t) {
-  const home = await realpath(await mkdtemp(join(tmpdir(), "onvitop-")));
+  const home = await realpath(await mkdtemp(join(tmpdir(), "nvitop-monitor-")));
   t.after(() => rm(home, { recursive: true, force: true }));
   return home;
 }
@@ -31,7 +31,7 @@ test("the SDK accepts the packaged manifest and its entry files exist", () => {
   assert.equal(parsed.ok, true, parsed.message);
   const { panel, service, page, statusSection } = parsed.manifest.contributes;
   assert.equal(panel.id, "openchamber-nvitop");
-  assert.equal(panel.name, "onvitop");
+  assert.equal(panel.name, "nvitop GPU Monitor");
   assert.equal(page, true);
   for (const path of [panel.entry, statusSection.entry, service.entry, "panel/main.js", "service/collect.py"]) {
     assert.ok(read(path).length);
