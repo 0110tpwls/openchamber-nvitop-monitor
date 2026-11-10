@@ -8,15 +8,20 @@
 </head>
 <body>
   <main id="root">
-    <header id="header">
-      <div>
-        <p class="eyebrow">NVIDIA TELEMETRY</p>
-        <h1>onvitop</h1>
-        <p id="source" class="muted">Connected OpenChamber server</p>
+    <div id="toolbar">
+      <p id="source" class="muted"></p>
+      <div id="controls">
+        <button id="metric-toggle" type="button" aria-expanded="false" aria-controls="metric-settings">Metrics</button>
+        <div id="pause"></div>
       </div>
-      <div id="controls"></div>
-    </header>
-    <p id="notice" role="status">Connecting to OpenChamber…</p>
+    </div>
+    <div id="metric-settings" hidden>
+      <table aria-label="GPU metrics to display">
+        <thead><tr><th scope="col">Metric</th><th scope="col">Bar</th><th scope="col">Graph</th></tr></thead>
+        <tbody id="metric-options"></tbody>
+      </table>
+    </div>
+    <p id="notice" role="status" aria-live="polite">Connecting to OpenChamber…</p>
     <div id="devices"></div>
     <section id="jobs" hidden aria-labelledby="jobs-title">
       <div class="section-heading">
@@ -25,8 +30,14 @@
       </div>
       <p id="empty" class="muted"></p>
       <div class="table-wrap">
-        <table>
-          <thead><tr><th>PID</th><th>Device</th><th>Process / user</th><th>Type</th><th>VRAM ↓</th><th>SM</th><th>Age</th></tr></thead>
+        <table class="process-table">
+          <thead><tr>
+            <th scope="col" class="pid-col">PID</th><th scope="col" class="gpu-col">GPU</th>
+            <th scope="col">Command / User</th><th scope="col" class="vram-col">VRAM ↓</th>
+            <th scope="col" class="wide">Type</th><th scope="col" class="wide">SM</th>
+            <th scope="col" class="wide">GMBW</th><th scope="col" class="wide">CPU</th>
+            <th scope="col" class="wide">MEM</th><th scope="col" class="wide">TIME</th>
+          </tr></thead>
           <tbody id="processes"></tbody>
         </table>
       </div>

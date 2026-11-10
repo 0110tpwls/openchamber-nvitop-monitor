@@ -2,6 +2,7 @@ import { connectHost } from "@openchamber/sdk";
 import { applyHostReady, mountButton, mountSearchField } from "@openchamber/sdk/ui";
 
 const WINDOW_MS = 120_000;
+const SETTINGS_KEY = "gpu-metric-display";
 const number = Number.isFinite;
 const byId = (id) => document.getElementById(id);
 const root = byId("root");
@@ -16,19 +17,36 @@ const element = (tag, className, text) => {
   return node;
 };
 const value = (n, unit) => number(n) ? `${Math.round(n)}${unit}` : "—";
+const precisePercent = (n) => number(n) ? `${n.toFixed(1)}%` : "—";
 const gib = (n) => number(n) ? `${(n / 2 ** 30).toFixed(1)} GiB` : "—";
 const fraction = (device) => device.total > 0 && number(device.used) ? 100 * device.used / device.total : null;
-const age = (seconds) => {
+const duration = (seconds) => {
   if (!number(seconds)) return "—";
-  if (seconds < 60) return `${Math.floor(seconds)}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
-  return `${Math.floor(seconds / 86400)}d`;
+  return [seconds / 3600, seconds / 60 % 60, seconds % 60]
+    .map((part) => String(Math.floor(part)).padStart(2, "0")).join(":");
 };
 const percent = (n) => Math.max(0, Math.min(100, n));
 
-function bar(n, memory = false) {
-  const track = element("div", memory ? "track memory" : "track");
+const METRICS = {
+  util: { label: "GPU utilization", unit: "%", read: (gpu) => gpu.util },
+  vram: {
+    label: "VRAM", unit: "%", read: fraction,
+    display: (gpu) => `${gib(gpu.used)} / ${gib(gpu.total)}`,
+  },
+  mbw: { label: "MBW", description: "Memory bandwidth utilization", unit: "%", read: (gpu) => gpu.mbw },
+  temperature: { label: "Temperature", unit: " °C", read: (gpu) => gpu.temperature },
+  power: {
+    label: "Power (PWR)", unit: " W", read: (gpu) => gpu.watts,
+    display: (gpu) => gpu.wattLimit > 0 ? `${value(gpu.watts, " W")} / ${value(gpu.wattLimit, " W")}` : value(gpu.watts, " W"),
+    bar: (gpu) => gpu.wattLimit > 0 && number(gpu.watts) ? 100 * gpu.watts / gpu.wattLimit : null,
+    ceiling: (gpu, samples) => Math.ceil(Math.max(10, gpu.wattLimit ?? 0, ...samples.map((s) => s.values.power ?? 0)) / 10) * 10,
+  },
+  fan: { label: "Fan", unit: "%", read: (gpu) => gpu.fan },
+};
+const DEFAULT_METRICS = { bars: ["util", "vram", "mbw", "temperature", "power", "fan"], graphs: ["util"] };
+
+function bar(n) {
+  const track = element("div", "track");
   track.setAttribute("aria-hidden", "true");
   if (number(n)) {
     const fill = element("div", "fill");
@@ -38,13 +56,22 @@ function bar(n, memory = false) {
   return track;
 }
 
-function metric(container, label, display, n, memory = false) {
-  const row = element("div", "metric");
-  row.append(element("span", "muted", label), element("strong", "", display));
-  container.append(row, bar(n, memory));
+function metricBar(id, gpu) {
+  const metric = METRICS[id];
+  const current = metric.read(gpu);
+  const node = element("div", "metric");
+  node.dataset.metric = id;
+  const row = element("div", "metric-label");
+  const label = element("span", "muted", metric.label);
+  if (metric.description) label.title = metric.description;
+  row.append(label, element("strong", "", metric.display ? metric.display(gpu) : value(current, metric.unit)));
+  node.append(row, bar(metric.bar ? metric.bar(gpu) : current));
+  return node;
 }
 
-function historyLine(samples, end) {
+function historyLine(id, gpu, samples, end) {
+  const metric = METRICS[id];
+  const ceiling = metric.ceiling?.(gpu, samples) ?? 100;
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
   svg.setAttribute("viewBox", "0 0 240 30");
@@ -54,37 +81,44 @@ function historyLine(samples, end) {
   let last = null;
   let segments = "";
   for (const sample of samples) {
-    if (!number(sample.util)) {
+    const n = sample.values[id];
+    if (!number(n)) {
       last = null;
       continue;
     }
     const x = ((sample.time - end + WINDOW_MS) / WINDOW_MS * 239).toFixed(2);
-    const y = (28 - percent(sample.util) * .26).toFixed(2);
+    const y = (28 - percent(100 * n / ceiling) * .26).toFixed(2);
     segments += last != null && sample.time - last <= 6_000 ? `L${x} ${y}` : `M${x} ${y}h.01`;
     last = sample.time;
   }
   path.setAttribute("d", segments);
   svg.append(path);
   const chart = element("div", "history");
-  chart.append(svg, element("span", "", "GPU utilization · last 2 min"));
+  chart.dataset.metric = id;
+  const caption = element("div", "chart-label");
+  caption.append(element("span", "", metric.label), element("span", "", `0–${ceiling}${metric.unit}`));
+  chart.append(caption, svg);
   return chart;
 }
 
-function gpuCard(device, children, samples, timestamp) {
+function gpuCard(device, children, samples, timestamp, selected) {
   const card = element("section", "card");
   const heading = element("div", "card-heading");
   heading.append(element("h2", "device-label", device.label), element("p", "muted", device.name ?? "—"));
   card.append(heading);
-  metric(card, "GPU utilization", value(device.util, "%"), device.util);
-  metric(card, "VRAM", `${gib(device.used)} / ${gib(device.total)}`, fraction(device), true);
-  card.append(element("p", "hardware",
-    `Temp ${value(device.temperature, " °C")} · Power ${value(device.watts, " W")} · Fan ${value(device.fan, "%")}`));
-  card.append(historyLine(samples, timestamp));
+  card.append(...selected.bars.map((id) => metricBar(id, device)));
+  if (selected.graphs.length) {
+    const graphs = element("div", "graphs");
+    graphs.append(element("p", "muted", "Last 2 min"),
+      ...selected.graphs.map((id) => historyLine(id, device, samples, timestamp)));
+    card.append(graphs);
+  }
 
   for (const child of children) {
     const partition = element("section", "mig");
     partition.append(element("h3", "", child.label), element("p", "muted", child.name ?? "—"));
-    metric(partition, "VRAM", `${gib(child.used)} / ${gib(child.total)}`, fraction(child), true);
+    partition.append(...selected.bars.filter((id) => ["util", "vram", "mbw"].includes(id))
+      .map((id) => metricBar(id, child)));
     card.append(partition);
   }
   return card;
@@ -98,13 +132,63 @@ function start(context) {
   let inFlight = false;
   let timer;
   let stopped = false;
+  let selected = DEFAULT_METRICS;
   const history = new Map();
+
+  function mountMetricSettings() {
+    const button = byId("metric-toggle");
+    const settings = byId("metric-settings");
+    button.addEventListener("click", () => {
+      settings.hidden = !settings.hidden;
+      button.setAttribute("aria-expanded", String(!settings.hidden));
+    });
+
+    let changed = false;
+    const inputs = [];
+    for (const [id, metric] of Object.entries(METRICS)) {
+      const row = element("tr");
+      const label = element("th", "", metric.label);
+      label.scope = "row";
+      if (metric.description) label.title = metric.description;
+      row.append(label);
+      for (const [kind, name] of [["bars", "Bar"], ["graphs", "Graph"]]) {
+        const input = element("input");
+        input.type = "checkbox";
+        input.setAttribute("aria-label", `${metric.label} ${name}`);
+        input.checked = selected[kind].includes(id);
+        inputs.push({ input, kind, id });
+        input.addEventListener("change", () => {
+          changed = true;
+          selected = { bars: [], graphs: [] };
+          for (const item of inputs) {
+            if (item.input.checked) selected[item.kind].push(item.id);
+          }
+          if (latest) renderCards(latest);
+          void host.storage.set(SETTINGS_KEY, selected).catch(() => {});
+        });
+        const cell = element("td");
+        cell.append(input);
+        row.append(cell);
+      }
+      byId("metric-options").append(row);
+    }
+
+    void host.storage.get(SETTINGS_KEY).then((saved) => {
+      if (stopped || changed || !Array.isArray(saved?.bars) || !Array.isArray(saved?.graphs)) return;
+      selected = { bars: [], graphs: [] };
+      for (const { input, kind, id } of inputs) {
+        input.checked = saved[kind].includes(id);
+        if (input.checked) selected[kind].push(id);
+      }
+      if (latest) renderCards(latest);
+    }).catch(() => {});
+  }
 
   function renderProcesses() {
     const search = query.trim().toLowerCase();
     const labels = new Map(latest.devices.map((device) => [device.id, device.label]));
     const matching = latest.processes.filter((process) =>
-      [process.pid, process.name, process.user, labels.get(process.deviceId)].some((field) =>
+      [process.pid, process.command, process.name, process.user, labels.get(process.deviceId)].some((field) =>
         String(field ?? "").toLowerCase().includes(search)));
     const count = latest.processCount;
     const cap = count > latest.processes.length ? ` · top ${latest.processes.length} by VRAM` : "";
@@ -113,18 +197,28 @@ function start(context) {
     byId("processes").closest(".table-wrap").hidden = matching.length === 0;
     byId("processes").replaceChildren(...matching.map((process) => {
       const row = element("tr");
-      const name = element("td", "", process.name ?? "—");
+      const name = element("td", "command-cell");
+      const command = process.command ?? process.name ?? "—";
+      const commandLabel = element("span", "command-name", command);
+      commandLabel.title = command;
+      const gpu = labels.get(process.deviceId) ?? "—";
       const type = process.type ?? "—";
       const sm = value(process.sm, "%");
-      const running = age(process.seconds);
+      const mbw = value(process.mbw, "%");
+      const cpu = precisePercent(process.cpu);
+      const mem = precisePercent(process.hostMemory);
+      const running = duration(process.seconds);
       name.append(
+        commandLabel,
         element("small", "", process.user ?? "—"),
-        element("small", "compact-details", `Type ${type} · SM ${sm} · Age ${running}`),
+        element("small", "compact-gpu", gpu),
+        element("small", "compact-details", `CPU ${cpu} · TIME ${running}`),
+        element("small", "compact-details", `${type} · SM ${sm} · GMBW ${mbw} · MEM ${mem}`),
       );
       row.append(
-        element("td", "", process.pid), element("td", "", labels.get(process.deviceId) ?? "—"), name,
-        element("td", "", type), element("td", "", gib(process.used)),
-        element("td", "", sm), element("td", "", running),
+        element("td", "pid-col", process.pid), element("td", "gpu-col", gpu), name,
+        element("td", "vram-col", gib(process.used)),
+        ...[type, sm, mbw, cpu, mem, running].map((field) => element("td", "wide", field)),
       );
       return row;
     }));
@@ -149,19 +243,28 @@ function start(context) {
     }
 
     byId("source").textContent = [sample.host, sample.driver && `Driver ${sample.driver}`].filter(Boolean).join(" · ");
+    renderCards(sample, physical);
+    byId("jobs").hidden = physical.length === 0;
+    if (physical.length) renderProcesses();
+  }
+
+  function renderCards(sample, physical = sample.devices.filter((device) => device.parentId === null)) {
+    const timestamp = sample.sampledAt;
     const physicalIds = new Set(physical.map((device) => device.id));
     for (const id of history.keys()) {
       if (!physicalIds.has(id)) history.delete(id);
     }
     devices.replaceChildren(...physical.map((device) => {
-      const points = (history.get(device.id) ?? []).filter((point) => point.time >= timestamp - WINDOW_MS);
-      if (points.at(-1)?.time !== timestamp) points.push({ time: timestamp, util: device.util });
+      const points = (history.get(device.id) ?? [])
+        .filter((point) => point.time >= timestamp - WINDOW_MS && point.time <= timestamp).slice(-120);
+      if (points.at(-1)?.time !== timestamp) {
+        const values = Object.fromEntries(Object.entries(METRICS).map(([id, metric]) => [id, metric.read(device)]));
+        points.push({ time: timestamp, values });
+      }
       history.set(device.id, points);
       const children = sample.devices.filter((child) => child.parentId === device.id);
-      return gpuCard(device, children, points, timestamp);
+      return gpuCard(device, children, points, timestamp, selected);
     }));
-    byId("jobs").hidden = physical.length === 0;
-    if (physical.length) renderProcesses();
   }
 
   async function refresh() {
@@ -199,7 +302,8 @@ function start(context) {
       host.setHeight(height);
     }).observe(root);
   } else {
-    const toggle = mountButton(byId("controls"), {
+    mountMetricSettings();
+    const toggle = mountButton(byId("pause"), {
       label: "Pause", variant: "outline", size: "sm",
       onClick: () => {
         paused = !paused;
@@ -216,7 +320,7 @@ function start(context) {
       },
     });
     const search = mountSearchField(byId("search"), {
-      value: "", placeholder: "PID, process, user, GPU",
+      value: "", placeholder: "PID, command, user, GPU",
       onChange: (next) => {
         query = next;
         search.update({ value: next });

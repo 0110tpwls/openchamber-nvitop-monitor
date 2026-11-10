@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { test } from "node:test";
 import { parseManifestJson } from "@openchamber/sdk/schemas";
-import { collectWithPython, createGpuService, createSampler, pythonCandidates } from "../service/main.js";
+import { collectWithPython, createCpuTracker, createGpuService, createSampler, pythonCandidates } from "../service/main.js";
 
 async function temporaryHome(t) {
   const home = await realpath(await mkdtemp(join(tmpdir(), "onvitop-")));
@@ -118,6 +118,30 @@ test("parallel callers share samples and errors expire before recovery", async (
   time = 6_800;
   assert.deepEqual(await sample(), { sampledAt: 6_800 });
   assert.equal(reads, 3);
+});
+
+test("CPU uses consecutive times for the same PID and process start", () => {
+  let time = 0;
+  const track = createCpuTracker(() => time);
+  const context = (startedAt, cpuTime, deviceId = "gpu") => ({ pid: 123, deviceId, startedAt, cpuTime });
+  assert.deepEqual(track({ processes: [context(1, 4)] }).processes, [
+    { pid: 123, deviceId: "gpu", cpu: null },
+  ]);
+
+  time = 2_000;
+  assert.deepEqual(track({ processes: [context(1, 7), context(1, 7, "mig")] }).processes, [
+    { pid: 123, deviceId: "gpu", cpu: 150 },
+    { pid: 123, deviceId: "mig", cpu: 150 },
+  ]);
+
+  time = 4_000;
+  assert.equal(track({ processes: [context(2, 0.5)] }).processes[0].cpu, null);
+  time = 6_000;
+  assert.equal(track({ processes: [context(2, 0.5)] }).processes[0].cpu, 0);
+  time = 8_000;
+  assert.equal(track({ processes: [context(2, null)] }).processes[0].cpu, null);
+  time = 10_000;
+  assert.equal(track({ processes: [context(2, 4)] }).processes[0].cpu, null);
 });
 
 test("service gates endpoints and keeps process details out of Work Status", async () => {

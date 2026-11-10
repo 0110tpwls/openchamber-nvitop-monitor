@@ -154,6 +154,31 @@ export async function collectWithPython(candidates, run) {
   return { error: "NVITOP_MISSING", message: "nvitop was not found. Check the server account's Pixi, uv tool, pipx or pip installation." };
 }
 
+export function createCpuTracker(now = () => performance.now()) {
+  let previous = new Map();
+  let previousTime;
+  return (sample) => {
+    if (!sample.processes) return sample;
+    const time = now();
+    const elapsed = (time - previousTime) / 1_000;
+    const current = new Map();
+    const processes = sample.processes.map(({ cpuTime, startedAt, ...process }) => {
+      const baseline = previous.get(process.pid);
+      let cpu = null;
+      if (Number.isFinite(cpuTime) && Number.isFinite(startedAt)) {
+        current.set(process.pid, { cpuTime, startedAt });
+        if (elapsed > 0 && baseline?.startedAt === startedAt && cpuTime >= baseline.cpuTime) {
+          cpu = (cpuTime - baseline.cpuTime) * 100 / elapsed;
+        }
+      }
+      return { ...process, cpu };
+    });
+    previous = current;
+    previousTime = time;
+    return { ...sample, processes };
+  };
+}
+
 export function createSampler(read, now = Date.now) {
   let cached;
   let expires = 0;
@@ -174,8 +199,10 @@ function json(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
-export function createGpuService({ token, sample = createSampler(collect) }) {
+export function createGpuService({ token, sample }) {
   if (!token) throw new Error("Missing OpenChamber service token");
+  const trackCpu = createCpuTracker();
+  sample ??= createSampler(async () => trackCpu(await collect()));
   return createServer(async (req, res) => {
     if (req.headers.authorization !== `Bearer ${token}`) return json(res, 401, { error: "UNAUTHORIZED" });
     if (req.method !== "GET") return json(res, 405, { error: "METHOD_NOT_ALLOWED" });
