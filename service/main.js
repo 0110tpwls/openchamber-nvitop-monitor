@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { basename, delimiter, dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { DEFAULT_SAMPLING_SECONDS, isSamplingInterval } from "../sampling.mjs";
 
 const exec = promisify(execFile);
 const collector = fileURLToPath(new URL("./collect.py", import.meta.url));
@@ -179,15 +180,16 @@ export function createCpuTracker(now = () => performance.now()) {
   };
 }
 
-export function createSampler(read, now = Date.now) {
+export function createSampler(read, now = () => performance.now()) {
   let cached;
-  let expires = 0;
+  let collectedAt;
   let pending;
-  return async () => {
-    if (now() < expires) return cached;
+  return async (seconds = DEFAULT_SAMPLING_SECONDS) => {
+    const cacheMs = cached?.error ? 5_000 : seconds * 1_000;
+    if (cached && now() - collectedAt < cacheMs) return cached;
     pending ??= Promise.resolve().then(read).then((sample) => {
       cached = sample;
-      expires = now() + (sample.error ? 5_000 : 1_800);
+      collectedAt = now();
       return sample;
     }).finally(() => { pending = undefined; });
     return pending;
@@ -206,13 +208,15 @@ export function createGpuService({ token, sample }) {
   return createServer(async (req, res) => {
     if (req.headers.authorization !== `Bearer ${token}`) return json(res, 401, { error: "UNAUTHORIZED" });
     if (req.method !== "GET") return json(res, 405, { error: "METHOD_NOT_ALLOWED" });
-    if (req.url === "/health") return json(res, 200, { ok: true });
-    if (req.url !== "/snapshot" && req.url !== "/summary") return json(res, 404, { error: "NOT_FOUND" });
+    const [path, query] = (req.url ?? "").split("?", 2);
+    if (path === "/health") return json(res, 200, { ok: true });
+    if (path !== "/snapshot" && path !== "/summary") return json(res, 404, { error: "NOT_FOUND" });
 
     try {
-      const data = await sample();
+      const seconds = Number(new URLSearchParams(query).get("interval"));
+      const data = await sample(isSamplingInterval(seconds) ? seconds : DEFAULT_SAMPLING_SECONDS);
       if (data.error) return json(res, 503, data);
-      if (req.url === "/summary") {
+      if (path === "/summary") {
         const { processes, ...summary } = data;
         summary.devices = data.devices.filter((device) => device.parentId === null);
         return json(res, 200, summary);

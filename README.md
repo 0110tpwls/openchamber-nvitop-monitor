@@ -28,7 +28,7 @@ A read-only NVIDIA GPU and process monitor for OpenChamber, powered by the nvito
 
    For private access, use `git@github.com:0110tpwls/openchamber-nvitop-monitor.git` with a Git identity that can read the repo. You can also clone the repo and add its absolute path on the server. The panel ships prebuilt. [OpenChamber extension installation](https://docs.openchamber.dev/extensions/#install-one)
 
-3. Approve **Run a local service**, then open **nvitop GPU Monitor** on the right rail. Use **Metrics** to choose which bars and charts to display. A compact view is available in **Work Status**.
+3. Approve **Run a local service**, then open **nvitop GPU Monitor** on the right rail. Use **Metrics** to choose which bars and charts to display and set the sampling interval from 1 to 60 seconds. The default is 2 seconds, and the interval also applies to the compact **Work Status** view.
 
 If the panel cannot find nvitop, check the account running OpenChamber and make sure the directory containing the `nvitop` launcher is on the **server's** `PATH`. Restart the server after changing its environment.
 

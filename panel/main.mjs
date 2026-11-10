@@ -1,8 +1,10 @@
 import { connectHost } from "@openchamber/sdk";
 import { applyHostReady, mountButton, mountSearchField } from "@openchamber/sdk/ui";
+import { DEFAULT_SAMPLING_SECONDS, isSamplingInterval } from "../sampling.mjs";
 
 const WINDOW_MS = 120_000;
 const SETTINGS_KEY = "gpu-metric-display";
+const SAMPLING_KEY = "gpu-sampling-seconds";
 const number = Number.isFinite;
 const byId = (id) => document.getElementById(id);
 const root = byId("root");
@@ -88,7 +90,7 @@ function historyLine(id, gpu, samples, end) {
     }
     const x = ((sample.time - end + WINDOW_MS) / WINDOW_MS * 239).toFixed(2);
     const y = (28 - percent(100 * n / ceiling) * .26).toFixed(2);
-    segments += last != null && sample.time - last <= 6_000 ? `L${x} ${y}` : `M${x} ${y}h.01`;
+    segments += last != null && sample.time - last <= sample.maxGapMs ? `L${x} ${y}` : `M${x} ${y}h.01`;
     last = sample.time;
   }
   path.setAttribute("d", segments);
@@ -133,6 +135,10 @@ function start(context) {
   let timer;
   let stopped = false;
   let selected = DEFAULT_METRICS;
+  let samplingSeconds = DEFAULT_SAMPLING_SECONDS;
+  let intervalRevision = 0;
+  let intervalWrite = Promise.resolve();
+  const intervalInput = byId("sampling-interval");
   const history = new Map();
 
   function mountMetricSettings() {
@@ -141,6 +147,20 @@ function start(context) {
     button.addEventListener("click", () => {
       settings.hidden = !settings.hidden;
       button.setAttribute("aria-expanded", String(!settings.hidden));
+    });
+
+    intervalInput.value = String(samplingSeconds);
+    intervalInput.addEventListener("change", () => {
+      const seconds = intervalInput.valueAsNumber;
+      if (!isSamplingInterval(seconds)) {
+        intervalInput.value = String(samplingSeconds);
+        return;
+      }
+      if (seconds === samplingSeconds) return;
+      samplingSeconds = seconds;
+      intervalRevision++;
+      intervalWrite = intervalWrite.then(() => host.storage.set(SAMPLING_KEY, seconds)).catch(() => {});
+      scheduleRefresh();
     });
 
     let changed = false;
@@ -259,7 +279,8 @@ function start(context) {
         .filter((point) => point.time >= timestamp - WINDOW_MS && point.time <= timestamp).slice(-120);
       if (points.at(-1)?.time !== timestamp) {
         const values = Object.fromEntries(Object.entries(METRICS).map(([id, metric]) => [id, metric.read(device)]));
-        points.push({ time: timestamp, values });
+        const maxGapMs = Math.max(6_000, samplingSeconds * 2_000 + 1_000);
+        points.push({ time: timestamp, values, maxGapMs });
       }
       history.set(device.id, points);
       const children = sample.devices.filter((child) => child.parentId === device.id);
@@ -267,12 +288,31 @@ function start(context) {
     }));
   }
 
+  function scheduleRefresh() {
+    clearTimeout(timer);
+    if (!inFlight && !paused && !stopped && !document.hidden) {
+      timer = setTimeout(refresh, samplingSeconds * 1_000);
+    }
+  }
+
   async function refresh() {
     if (stopped || inFlight || paused || document.hidden) return;
     inFlight = true;
     clearTimeout(timer);
     try {
-      const response = await host.serviceRequest({ method: "GET", path: compact ? "/summary" : "/snapshot" });
+      // Read the shared preference so an already-open Work Status follows changes too.
+      const revision = intervalRevision;
+      await intervalWrite;
+      const saved = await host.storage.get(SAMPLING_KEY).catch(() => undefined);
+      if (stopped || paused || document.hidden) return;
+      if (revision === intervalRevision && isSamplingInterval(saved) && saved !== samplingSeconds) {
+        samplingSeconds = saved;
+        intervalInput.value = String(saved);
+      }
+      const response = await host.serviceRequest({
+        method: "GET", path: compact ? "/summary" : "/snapshot",
+        query: { interval: String(samplingSeconds) },
+      });
       if (stopped || paused) return;
       const sample = JSON.parse(response.body);
       if (response.status !== 200) throw new Error(sample.message ?? `Service returned HTTP ${response.status}`);
@@ -289,7 +329,7 @@ function start(context) {
       notice.textContent = stale + message;
     } finally {
       inFlight = false;
-      if (!paused && !stopped && !document.hidden) timer = setTimeout(refresh, 2_000);
+      scheduleRefresh();
     }
   }
 

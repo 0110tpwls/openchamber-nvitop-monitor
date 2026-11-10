@@ -16,6 +16,10 @@
       </div>
     </div>
     <div id="metric-settings" hidden>
+      <div class="sampling-setting">
+        <label for="sampling-interval">Sampling interval (sec) <span class="muted">(1–60)</span></label>
+        <input id="sampling-interval" type="number" min="1" max="60" step="1" value="2">
+      </div>
       <table aria-label="GPU metrics to display">
         <thead><tr><th scope="col">Metric</th><th scope="col">Bar</th><th scope="col">Graph</th></tr></thead>
         <tbody id="metric-options"></tbody>

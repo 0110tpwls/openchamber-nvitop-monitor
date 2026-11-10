@@ -113,11 +113,24 @@ test("parallel callers share samples and errors expire before recovery", async (
   assert.deepEqual(await sample(), { error: "NVML" });
   time = 5_000;
   assert.deepEqual(await sample(), { sampledAt: 5_000 });
-  time = 6_799;
+  time = 6_999;
   assert.deepEqual(await sample(), { sampledAt: 5_000 });
-  time = 6_800;
-  assert.deepEqual(await sample(), { sampledAt: 6_800 });
+  time = 7_000;
+  assert.deepEqual(await sample(), { sampledAt: 7_000 });
   assert.equal(reads, 3);
+});
+
+test("the shared sampler uses the requested interval for an existing sample", async () => {
+  let time = 0;
+  const sample = createSampler(async () => ({ sampledAt: time }), () => time);
+  assert.deepEqual(await sample(10), { sampledAt: 0 });
+  time = 9_999;
+  assert.deepEqual(await sample(10), { sampledAt: 0 });
+  assert.deepEqual(await sample(5), { sampledAt: 9_999 });
+  time = 10_998;
+  assert.deepEqual(await sample(1), { sampledAt: 9_999 });
+  time = 10_999;
+  assert.deepEqual(await sample(1), { sampledAt: 10_999 });
 });
 
 test("CPU uses consecutive times for the same PID and process start", () => {
@@ -151,7 +164,14 @@ test("service gates endpoints and keeps process details out of Work Status", asy
     processes: [{ pid: 123, deviceId: "mig" }],
     processCount: 1,
   };
-  const server = createGpuService({ token: "test", sample: async () => snapshot });
+  const intervals = [];
+  const server = createGpuService({
+    token: "test",
+    sample: async (seconds) => {
+      intervals.push(seconds);
+      return snapshot;
+    },
+  });
   function request(url, method = "GET", authorization = "Bearer test") {
     return new Promise((resolve) => {
       let status;
@@ -167,7 +187,10 @@ test("service gates endpoints and keeps process details out of Work Status", asy
   assert.equal((await request("/snapshot", "POST")).status, 405);
   assert.equal((await request("/missing")).status, 404);
   assert.deepEqual((await request("/snapshot")).data, snapshot);
-  assert.deepEqual((await request("/summary")).data, {
+  assert.deepEqual((await request("/summary?interval=15")).data, {
     version: 1, devices: [snapshot.devices[0]], processCount: 1,
   });
+  assert.equal((await request("/snapshot?interval=61")).status, 200);
+  assert.equal((await request("/snapshot?interval=2.5")).status, 200);
+  assert.deepEqual(intervals, [2, 15, 2, 2]);
 });

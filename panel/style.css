@@ -26,7 +26,15 @@ h2, h3 { font-size: 14px; line-height: 1.4; }
 #metric-settings th { white-space: normal; }
 #metric-settings th:nth-child(n+2), #metric-settings td { text-align: center; width: 46px; }
 #metric-settings tr:last-child > * { border-bottom: 0; }
-#metric-settings input { display: block; margin: auto; accent-color: var(--oc-primary, #7b62df); cursor: pointer; }
+#metric-settings input[type="checkbox"] { display: block; margin: auto; accent-color: var(--oc-primary, #7b62df); cursor: pointer; }
+.sampling-setting {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 6px; padding: 6px; border-bottom: 1px solid var(--line); font-size: 11px;
+}
+#sampling-interval {
+  width: 4.5em; padding: 4px 6px; font: inherit; color: inherit;
+  background: transparent; border: 1px solid var(--line); border-radius: var(--oc-radius, 5px);
+}
 #notice { color: var(--muted); font-size: 12px; margin-bottom: 10px; overflow-wrap: anywhere; }
 #notice[data-error="true"] { color: var(--error-text, #c05245); }
 #devices { display: grid; gap: 8px; align-items: start; }
