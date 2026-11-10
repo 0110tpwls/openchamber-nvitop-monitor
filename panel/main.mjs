@@ -45,7 +45,7 @@ const METRICS = {
   },
   fan: { label: "Fan", unit: "%", read: (gpu) => gpu.fan },
 };
-const DEFAULT_METRICS = { bars: ["util", "vram", "mbw", "temperature", "power", "fan"], graphs: ["util"] };
+const DEFAULT_METRICS = { bars: ["util", "vram", "mbw", "temperature", "power"], graphs: ["util"] };
 
 function bar(n) {
   const track = element("div", "track");

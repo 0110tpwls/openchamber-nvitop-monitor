@@ -1,6 +1,6 @@
 {
   "name": "openchamber-nvitop-monitor",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "type": "module",
   "description": "Read-only NVIDIA GPU and process monitor for OpenChamber, powered by nvitop",
