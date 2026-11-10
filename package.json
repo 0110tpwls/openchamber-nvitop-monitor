@@ -2,6 +2,7 @@
   "name": "openchamber-nvitop-monitor",
   "version": "0.1.6",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Read-only NVIDIA GPU and process monitor for OpenChamber, powered by nvitop",
   "scripts": {

@@ -36,4 +36,10 @@ If the panel cannot find nvitop, check the account running OpenChamber and make 
 
 Use Node.js 22 or later and Python 3. Run `npm ci` followed by `npm run check` to rebuild the panel and run the tests.
 
-The bundled OpenChamber SDK is covered by the [SDK license](OPENCHAMBER-SDK-LICENSE).
+## License
+
+This project is licensed under the [Apache License, Version 2.0](LICENSE) (SPDX: `Apache-2.0`), matching the license of the [nvitop public Python API](https://github.com/XuehaiPan/nvitop#license) used by the collector.
+
+[nvitop](https://github.com/XuehaiPan/nvitop) is copyright 2021-2026 Xuehai Pan. Its public API is licensed under Apache-2.0; its CLI and TUI are separately licensed under GPL-3.0. This extension uses the public API and does not import or bundle nvitop's CLI or TUI source code. nvitop is installed separately on the server.
+
+The bundled OpenChamber SDK retains its [MIT license and copyright notice](OPENCHAMBER-SDK-LICENSE). Third-party components retain their respective licenses.
