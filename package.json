@@ -1,6 +1,6 @@
 {
-  "name": "openchamber-nvitop",
-  "version": "0.1.0",
+  "name": "onvitop",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Read-only NVIDIA GPU and process monitor for OpenChamber",
@@ -21,14 +21,14 @@
     "contributes": {
       "panel": {
         "id": "openchamber-nvitop",
-        "name": "nvitop",
+        "name": "onvitop",
         "icon": "icon.svg",
         "entry": "panel/index.html"
       },
       "page": true,
       "statusSection": {
         "entry": "panel/index.html",
-        "title": "NVIDIA GPUs",
+        "title": "onvitop",
         "height": 130
       },
       "service": {

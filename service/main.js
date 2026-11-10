@@ -1,23 +1,53 @@
 import { execFile } from "node:child_process";
-import { access } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const exec = promisify(execFile);
 const collector = fileURLToPath(new URL("./collect.py", import.meta.url));
-const venvPython = join(homedir(), ".local/share/openchamber-nvitop/venv/bin/python3");
+
+async function executable(path) {
+  return access(path, constants.X_OK).then(() => true, () => false);
+}
+
+export async function* pythonCandidates({ home = homedir(), env = process.env } = {}) {
+  const venvPython = join(home, ".local/share/openchamber-nvitop/venv/bin/python3");
+  if (await executable(venvPython)) yield venvPython;
+
+  // The service keeps HOME and PATH even if OpenChamber strips PIXI_HOME.
+  const roots = new Set([join(home, ".pixi")]);
+  if (env.PIXI_HOME && isAbsolute(env.PIXI_HOME)) roots.add(env.PIXI_HOME);
+  for (const bin of (env.PATH ?? "").split(delimiter)) {
+    if (isAbsolute(bin) && basename(bin) === "bin" &&
+        await executable(join(bin, "trampoline_configuration"))) {
+      roots.add(dirname(bin));
+    }
+  }
+
+  for (const root of roots) {
+    const envs = join(root, "envs");
+    const names = await readdir(envs).catch(() => []);
+    for (const name of ["nvitop", ...names.filter((name) => name !== "nvitop").sort()]) {
+      const bin = join(envs, name, "bin");
+      if (!await executable(join(bin, "nvitop"))) continue;
+      const python = join(bin, "python3");
+      if (await executable(python)) yield python;
+      else if (await executable(join(bin, "python"))) yield join(bin, "python");
+    }
+  }
+  yield "python3";
+}
 
 export async function collect() {
   if (process.platform !== "linux") {
     return { error: "UNSUPPORTED_OS", message: "Connect to an OpenChamber server running on a Linux NVIDIA host." };
   }
 
-  const python = await access(venvPython).then(() => venvPython, () => "python3");
-  try {
-    // Pass only the locale, home and executable search path to the collector.
+  return collectWithPython(pythonCandidates(), async (python) => {
     const { PATH, HOME, LANG, LC_ALL } = process.env;
     const { stdout } = await exec(python, ["-I", collector], {
       env: { PATH, HOME, LANG, LC_ALL },
@@ -27,16 +57,29 @@ export async function collect() {
       maxBuffer: 512 * 1024,
     });
     return JSON.parse(stdout);
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      return { error: "PYTHON_MISSING", message: "Install Python 3 on the OpenChamber server." };
+  });
+}
+
+export async function collectWithPython(candidates, run) {
+  let pythonFound = false;
+  for await (const python of candidates) {
+    try {
+      const sample = await run(python);
+      if (sample.error !== "NVITOP_MISSING") return sample;
+      pythonFound = true;
+    } catch (error) {
+      if (error.code === "ENOENT") continue;
+      if (error.killed) {
+        return { error: "COLLECTOR_TIMEOUT", message: "GPU sampling timed out. Check nvidia-smi on the server." };
+      }
+      console.error("nvitop collector failed:", String(error.stderr || error.message).slice(0, 2000));
+      return { error: "COLLECTOR_FAILED", message: "GPU sampling failed. Check the extension service log." };
     }
-    if (error.killed) {
-      return { error: "COLLECTOR_TIMEOUT", message: "GPU sampling timed out. Check nvidia-smi on the server." };
-    }
-    console.error("nvitop collector failed:", String(error.stderr || error.message).slice(0, 2000));
-    return { error: "COLLECTOR_FAILED", message: "GPU sampling failed. Check the extension service log." };
   }
+  if (!pythonFound) {
+    return { error: "PYTHON_MISSING", message: "Python 3 was not found on the OpenChamber server." };
+  }
+  return { error: "NVITOP_MISSING", message: "nvitop was not found in Pixi global, the extension venv, or system Python. Check the OpenChamber server account." };
 }
 
 export function createSampler(read, now = Date.now) {
