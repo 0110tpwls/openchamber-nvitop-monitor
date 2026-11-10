@@ -1,0 +1,45 @@
+{
+  "name": "openchamber-nvitop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only NVIDIA GPU and process monitor for OpenChamber",
+  "scripts": {
+    "build": "esbuild panel/main.mjs --bundle --format=iife --platform=browser --minify --legal-comments=inline --outfile=panel/main.js",
+    "test": "node --test && python3 -m unittest discover -s test",
+    "check": "npm run build && npm test"
+  },
+  "devDependencies": {
+    "@openchamber/sdk": "2.6.0",
+    "esbuild": "0.28.2"
+  },
+  "openchamber": {
+    "apiVersion": 1,
+    "engines": {
+      "openchamber": ">=2.0.1"
+    },
+    "contributes": {
+      "panel": {
+        "id": "openchamber-nvitop",
+        "name": "nvitop",
+        "icon": "icon.svg",
+        "entry": "panel/index.html"
+      },
+      "page": true,
+      "statusSection": {
+        "entry": "panel/index.html",
+        "title": "NVIDIA GPUs",
+        "height": 130
+      },
+      "service": {
+        "entry": "service/main.js",
+        "runtime": "host",
+        "permissions": {
+          "exec": [
+            "python3"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>nvitop</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="root">
+    <header id="header">
+      <div>
+        <p class="eyebrow">NVIDIA TELEMETRY</p>
+        <h1>nvitop</h1>
+        <p id="source" class="muted">Connected OpenChamber server</p>
+      </div>
+      <div id="controls"></div>
+    </header>
+    <p id="notice" role="status">Connecting to OpenChamber…</p>
+    <div id="devices"></div>
+    <section id="jobs" hidden aria-labelledby="jobs-title">
+      <div class="section-heading">
+        <div><h2 id="jobs-title">GPU processes</h2><p id="job-count" class="muted"></p></div>
+        <div id="search"></div>
+      </div>
+      <p id="empty" class="muted"></p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>PID</th><th>Device</th><th>Process / user</th><th>Type</th><th>VRAM ↓</th><th>SM</th><th>Age</th></tr></thead>
+          <tbody id="processes"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script src="main.js"></script>
+</body>
+</html>
