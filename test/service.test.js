@@ -1,11 +1,29 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { test } from "node:test";
 import { parseManifestJson } from "@openchamber/sdk/schemas";
 import { collectWithPython, createGpuService, createSampler, pythonCandidates } from "../service/main.js";
+
+async function temporaryHome(t) {
+  const home = await realpath(await mkdtemp(join(tmpdir(), "onvitop-")));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  return home;
+}
+
+async function addExecutable(path, contents = "") {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, contents, { mode: 0o755 });
+  return path;
+}
+
+async function candidatesInHome(home, env) {
+  const candidates = await Array.fromAsync(pythonCandidates({ home, env }));
+  assert.equal(candidates.at(-1), "python3");
+  return candidates.filter((path) => path.startsWith(home + "/"));
+}
 
 test("the SDK accepts the packaged manifest and its entry files exist", () => {
   const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -21,13 +39,7 @@ test("the SDK accepts the packaged manifest and its entry files exist", () => {
 });
 
 test("finds default and named Pixi environments even with no PIXI_HOME", async (t) => {
-  const home = await mkdtemp(join(tmpdir(), "onvitop-"));
-  t.after(() => rm(home, { recursive: true, force: true }));
-  async function addExecutable(path) {
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, "", { mode: 0o755 });
-    return path;
-  }
+  const home = await temporaryHome(t);
   const defaultPixi = join(home, ".pixi", "envs", "nvitop", "bin");
   const customRoot = join(home, "custom-pixi");
   const customPixi = join(customRoot, "envs", "gpu-tools", "bin");
@@ -39,13 +51,46 @@ test("finds default and named Pixi environments even with no PIXI_HOME", async (
   const customBin = join(customRoot, "bin");
   await mkdir(join(customBin, "trampoline_configuration"), { recursive: true });
 
-  assert.deepEqual(await Array.fromAsync(pythonCandidates({ home, env: {} })),
-    [defaultPython, "python3"]);
-  assert.deepEqual(await Array.fromAsync(pythonCandidates({
-    home, env: { PATH: ["/usr/bin", customBin].join(delimiter) },
-  })), [defaultPython, customPython, "python3"]);
-  assert.deepEqual(await Array.fromAsync(pythonCandidates({ home, env: { PIXI_HOME: customRoot } })),
-    [defaultPython, customPython, "python3"]);
+  assert.deepEqual(await candidatesInHome(home, {}), [defaultPython]);
+  assert.deepEqual(await candidatesInHome(home, { PATH: ["/usr/bin", customBin].join(delimiter) }),
+    [defaultPython, customPython]);
+  assert.deepEqual(await candidatesInHome(home, { PIXI_HOME: customRoot }), [defaultPython, customPython]);
+});
+
+test("finds default, legacy and custom uv and pipx installs without launchers on PATH", async (t) => {
+  const home = await temporaryHome(t);
+  const defaultUv = await addExecutable(join(home, ".local/share/uv/tools/nvitop/bin/python3"));
+  const legacyPipx = await addExecutable(join(home, ".local/pipx/venvs/nvitop/bin/python3"));
+  const defaultPipx = await addExecutable(join(home, ".local/share/pipx/venvs/nvitop/bin/python"));
+  const data = join(home, "xdg data");
+  const xdgUv = await addExecutable(join(data, "uv/tools/nvitop/bin/python"));
+  const xdgPipx = await addExecutable(join(data, "pipx/venvs/nvitop/bin/python"));
+  const uv = join(home, "custom uv");
+  const pipx = join(home, "custom pipx");
+  const globalPipx = join(home, "global pipx");
+  const customUv = await addExecutable(join(uv, "nvitop/bin/python"));
+  const customPipx = await addExecutable(join(pipx, "venvs/nvitop/bin/python3"));
+  const customGlobalPipx = await addExecutable(join(globalPipx, "venvs/nvitop/bin/python3"));
+
+  assert.deepEqual(await candidatesInHome(home, { PATH: "/usr/bin" }), [defaultUv, legacyPipx, defaultPipx]);
+  assert.deepEqual(await candidatesInHome(home, {
+    PATH: "/usr/bin", XDG_DATA_HOME: data, UV_TOOL_DIR: uv, PIPX_HOME: pipx, PIPX_GLOBAL_HOME: globalPipx,
+  }), [customUv, xdgUv, defaultUv, customPipx, legacyPipx, xdgPipx, defaultPipx, customGlobalPipx]);
+});
+
+test("recovers custom virtualenvs and user installs from launchers", async (t) => {
+  const home = await temporaryHome(t);
+  const systemPython = await addExecutable(join(home, "system/bin/python3.12"));
+  const venvBin = join(home, "tool env/bin");
+  const launcher = await addExecutable(join(venvBin, "nvitop"), "#!/bin/sh\n");
+  const venvPython = join(venvBin, "python3");
+  await symlink(systemPython, venvPython);
+  const pathBin = join(home, "custom bin");
+  await mkdir(pathBin);
+  await symlink(launcher, join(pathBin, "nvitop"));
+  await addExecutable(join(home, ".local/bin/nvitop"), `#!${systemPython}\n`);
+
+  assert.deepEqual(await candidatesInHome(home, { PATH: pathBin }), [venvPython, systemPython]);
 });
 
 test("a stale venv does not mask Pixi and an NVML error does not fall back", async () => {

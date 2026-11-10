@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
-import { access, readdir } from "node:fs/promises";
+import { access, open, readdir, realpath, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { homedir } from "node:os";
 import { basename, delimiter, dirname, isAbsolute, join } from "node:path";
@@ -14,16 +14,19 @@ async function executable(path) {
   return access(path, constants.X_OK).then(() => true, () => false);
 }
 
-export async function* pythonCandidates({ home = homedir(), env = process.env } = {}) {
-  const venvPython = join(home, ".local/share/openchamber-nvitop/venv/bin/python3");
-  if (await executable(venvPython)) yield venvPython;
+async function pythonIn(bin) {
+  const python3 = join(bin, "python3");
+  if (await executable(python3)) return python3;
+  const python = join(bin, "python");
+  if (await executable(python)) return python;
+}
 
+async function* pixiInterpreters(home, env, pathBins) {
   // The service keeps HOME and PATH even if OpenChamber strips PIXI_HOME.
   const roots = new Set([join(home, ".pixi")]);
   if (env.PIXI_HOME && isAbsolute(env.PIXI_HOME)) roots.add(env.PIXI_HOME);
-  for (const bin of (env.PATH ?? "").split(delimiter)) {
-    if (isAbsolute(bin) && basename(bin) === "bin" &&
-        await executable(join(bin, "trampoline_configuration"))) {
+  for (const bin of pathBins) {
+    if (basename(bin) === "bin" && await executable(join(bin, "trampoline_configuration"))) {
       roots.add(dirname(bin));
     }
   }
@@ -34,12 +37,80 @@ export async function* pythonCandidates({ home = homedir(), env = process.env } 
     for (const name of ["nvitop", ...names.filter((name) => name !== "nvitop").sort()]) {
       const bin = join(envs, name, "bin");
       if (!await executable(join(bin, "nvitop"))) continue;
-      const python = join(bin, "python3");
-      if (await executable(python)) yield python;
-      else if (await executable(join(bin, "python"))) yield join(bin, "python");
+      yield await pythonIn(bin);
     }
   }
+}
+
+async function* managedInterpreters(home, env) {
+  const dataDirs = new Set([env.XDG_DATA_HOME, join(home, ".local/share")].filter((path) => path && isAbsolute(path)));
+  const pipxHomes = [
+    env.PIPX_HOME,
+    join(home, ".local/pipx"),
+    ...Array.from(dataDirs, (data) => join(data, "pipx")),
+    env.PIPX_GLOBAL_HOME,
+    "/opt/pipx",
+  ];
+  const toolDirs = [
+    env.UV_TOOL_DIR,
+    ...Array.from(dataDirs, (data) => join(data, "uv/tools")),
+    ...pipxHomes.filter((path) => path && isAbsolute(path)).map((path) => join(path, "venvs")),
+  ];
+  for (const dir of new Set(toolDirs.filter((path) => path && isAbsolute(path)))) {
+    yield await pythonIn(join(dir, "nvitop", "bin"));
+  }
+}
+
+async function launcherPython(bin) {
+  try {
+    const launcher = await realpath(join(bin, "nvitop"));
+    if (!(await stat(launcher)).isFile() || !await executable(launcher)) return;
+
+    // Read the entry point without running it. Keep the Python path itself
+    // unresolved so Python can detect its virtual environment.
+    const file = await open(launcher, "r");
+    const bytes = Buffer.alloc(512);
+    let firstLine;
+    try {
+      const { bytesRead } = await file.read(bytes);
+      firstLine = bytes.toString("utf8", 0, bytesRead).split("\n", 1)[0];
+    } finally {
+      await file.close();
+    }
+    const interpreter = firstLine.match(/^#![ \t]*(\/[^\s]+)[ \t]*\r?$/)?.[1];
+    if (interpreter && /^(?:python|pypy)(?:\d+(?:\.\d+)?)?t?$/.test(basename(interpreter)) &&
+        await executable(interpreter)) return interpreter;
+
+    // pip may use a shell launcher when a venv path contains spaces.
+    return pythonIn(dirname(launcher));
+  } catch {
+    // The entry point can disappear during an upgrade.
+  }
+}
+
+async function* installedInterpreters(home, env, pathBins) {
+  yield await pythonIn(join(home, ".local/share/openchamber-nvitop/venv/bin"));
+  yield* pixiInterpreters(home, env, pathBins);
+  yield* managedInterpreters(home, env);
+  const appBins = [
+    ...pathBins, env.UV_TOOL_BIN_DIR, env.PIPX_BIN_DIR, env.PIPX_GLOBAL_BIN_DIR, env.XDG_BIN_HOME,
+    env.XDG_DATA_HOME && isAbsolute(env.XDG_DATA_HOME) ? join(env.XDG_DATA_HOME, "../bin") : undefined,
+    join(home, ".local/bin"), "/usr/local/bin",
+  ];
+  for (const bin of new Set(appBins.filter((path) => path && isAbsolute(path)))) {
+    yield await launcherPython(bin);
+  }
   yield "python3";
+}
+
+export async function* pythonCandidates({ home = homedir(), env = process.env } = {}) {
+  const pathBins = [...new Set((env.PATH ?? "").split(delimiter).filter(isAbsolute))];
+  const seen = new Set();
+  for await (const python of installedInterpreters(home, env, pathBins)) {
+    if (!python || seen.has(python)) continue;
+    seen.add(python);
+    yield python;
+  }
 }
 
 export async function collect() {
@@ -49,7 +120,8 @@ export async function collect() {
 
   return collectWithPython(pythonCandidates(), async (python) => {
     const { PATH, HOME, LANG, LC_ALL } = process.env;
-    const { stdout } = await exec(python, ["-I", collector], {
+    // Ignore PYTHON* variables while retaining the site directory used by pip --user.
+    const { stdout } = await exec(python, ["-E", collector], {
       env: { PATH, HOME, LANG, LC_ALL },
       encoding: "utf8",
       timeout: 5_000,
@@ -79,7 +151,7 @@ export async function collectWithPython(candidates, run) {
   if (!pythonFound) {
     return { error: "PYTHON_MISSING", message: "Python 3 was not found on the OpenChamber server." };
   }
-  return { error: "NVITOP_MISSING", message: "nvitop was not found in Pixi global, the extension venv, or system Python. Check the OpenChamber server account." };
+  return { error: "NVITOP_MISSING", message: "nvitop was not found. Check the server account's Pixi, uv tool, pipx or pip installation." };
 }
 
 export function createSampler(read, now = Date.now) {

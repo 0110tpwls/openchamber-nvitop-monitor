@@ -6,18 +6,30 @@ OpenChamber에서 NVIDIA GPU와 GPU를 쓰는 프로세스를 확인하는 읽�
 
 **OpenChamber 2.0.1 이상(Web 또는 Desktop)**과 NVIDIA 드라이버가 설치된 **Linux OpenChamber 서버**가 필요합니다. 컨테이너에서 OpenChamber를 실행한다면 컨테이너에 GPU와 NVML이 노출되어야 합니다. 프로세스 이름과 사용자는 서버 프로세스가 해당 PID를 조회할 수 있을 때 표시됩니다. [OpenChamber 확장 설치 문서](https://docs.openchamber.dev/extensions/) · [nvitop 요구사항](https://pypi.org/project/nvitop/#requirements)
 
-1. OpenChamber 서버를 실행하는 계정으로 GPU 서버에 접속해 `nvidia-smi`로 드라이버를 확인합니다. 이 계정에 `pixi global install nvitop`으로 설치한 환경이 있으면 그대로 쓸 수 있습니다. Pixi를 쓰지 않는 경우 아래 명령으로 전용 가상환경을 만듭니다.
+1. OpenChamber 서버를 실행하는 계정으로 GPU 서버에 접속해 `nvidia-smi`로 드라이버를 확인합니다. 이미 설치된 nvitop은 그대로 쓸 수 있습니다. 처음 설치한다면 다음 중 하나를 선택합니다.
 
    ```bash
-   nvidia-smi
-   python3 -m venv "$HOME/.local/share/openchamber-nvitop/venv"
-   "$HOME/.local/share/openchamber-nvitop/venv/bin/python3" -m pip install 'nvitop>=1.7.2,<2'
+   pixi global install nvitop
+   # 또는 uv tool install nvitop
+   # 또는 pipx install nvitop
    ```
 
 2. **Settings → Extensions → Add**에 서버에서 접근 가능한 확장 ZIP 또는 압축을 푼 폴더의 절대 경로를 입력합니다. Git 서버에 리포를 올린 뒤에는 HTTPS 리포 URL도 사용할 수 있습니다. 설치 패키지에 빌드된 패널이 들어 있으므로 GPU 서버에서 npm을 실행할 필요는 없습니다.
 3. **Run a local service** 권한을 승인하고 오른쪽 레일의 **onvitop**을 엽니다. 넓은 화면은 **Extension pages → onvitop**, 요약은 **Work Status → onvitop**에서 볼 수 있습니다.
 
 기존 폴더 설치를 업데이트하려면 같은 폴더를 새 버전으로 교체한 뒤 OpenChamber 서버를 재시작합니다. ZIP으로 설치했다면 Settings → Extensions에서 이전 패키지를 제거하고 새 ZIP을 추가합니다. 확장 ID는 `openchamber-nvitop`을 유지합니다.
+
+### Python 환경 탐색
+
+| 설치 방법 | 찾는 경로 |
+| --- | --- |
+| 확장 전용 venv | `~/.local/share/openchamber-nvitop/venv/bin` |
+| Pixi global | `~/.pixi/envs`, `PIXI_HOME`, 서버 PATH에 등록된 Pixi `bin`의 전역 환경 |
+| uv tool | `UV_TOOL_DIR`, `$XDG_DATA_HOME/uv/tools`, `~/.local/share/uv/tools` |
+| pipx | `PIPX_HOME`, `$XDG_DATA_HOME/pipx`, `~/.local/share/pipx`, 구버전의 `~/.local/pipx`, 전역 설치의 `PIPX_GLOBAL_HOME` 또는 `/opt/pipx` |
+| pip, Conda, 기타 venv | 서버 PATH나 `~/.local/bin`에 노출된 `nvitop` 실행 파일의 Python, 마지막으로 PATH의 `python3`와 그 사용자 패키지 |
+
+OpenChamber 서비스가 로그인 셸의 경로 변수를 전달받지 못하는 경우가 있습니다. 사용자 지정 설치 경로를 쓰고 자동 탐색이 실패하면 **OpenChamber 서버의 PATH**에 `nvitop`이 노출된 `bin` 디렉터리를 추가한 뒤 서버를 재시작합니다. nvitop 설치 위치는 서버와 같은 계정에서 `pixi global list`, `uv tool dir`, `pipx environment`로 확인할 수 있습니다. [Pixi 전역 환경](https://pixi.prefix.dev/latest/global_tools/manifest/) · [uv 저장 경로](https://docs.astral.sh/uv/reference/storage/) · [pipx 경로 설정](https://pipx.pypa.io/latest/how-to/configure-paths.html)
 
 ## 화면과 수집 범위
 
@@ -60,13 +72,13 @@ npm ci
 npm run check
 ```
 
-`panel/main.js`는 빌드된 브라우저 번들입니다. 패널을 수정한 뒤 `npm run build`로 갱신하고 함께 커밋합니다. GPU 서버에서 수집기만 확인하려면 리포 루트에서 다음 명령을 실행합니다.
+`panel/main.js`는 빌드된 브라우저 번들입니다. 패널을 수정한 뒤 `npm run build`로 갱신하고 함께 커밋합니다. GPU 서버에서 수집기만 확인하려면 리포 루트에서 nvitop이 설치된 Python으로 실행합니다. 아래 예시는 확장 전용 venv를 사용하는 경우입니다.
 
 ```bash
-"$HOME/.local/share/openchamber-nvitop/venv/bin/python3" -I service/collect.py
+python3 -m venv "$HOME/.local/share/openchamber-nvitop/venv"
+"$HOME/.local/share/openchamber-nvitop/venv/bin/python3" -m pip install -r requirements.txt
+"$HOME/.local/share/openchamber-nvitop/venv/bin/python3" -E service/collect.py
 ```
-
-수집 서비스는 전용 가상환경, Pixi 전역 환경, 서버 PATH의 `python3` 순서로 시도합니다. Pixi는 기본 `~/.pixi/envs`와 서비스에서 확인할 수 있는 `PIXI_HOME`을 찾습니다. 사용자 지정 Pixi 경로를 쓸 때 OpenChamber가 `PIXI_HOME`을 서비스에 전달하지 않으면, **OpenChamber 서버의 PATH**에 해당 Pixi의 `bin` 디렉터리를 추가한 뒤 서버를 재시작합니다. `pixi global list`는 서버와 같은 계정에서 실행해 확인합니다. [Pixi 전역 환경 문서](https://pixi.prefix.dev/latest/global_tools/manifest/)
 
 `NVML_UNAVAILABLE`이 나오면 OpenChamber 서버와 같은 환경에서 `nvidia-smi`를 확인합니다.
 
