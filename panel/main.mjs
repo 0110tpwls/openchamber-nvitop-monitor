@@ -54,11 +54,10 @@ const SYSTEM_METRICS = {
   },
 };
 const METRICS = { ...GPU_METRICS, ...SYSTEM_METRICS };
-const SYSTEM_IDS = Object.keys(SYSTEM_METRICS);
 const SYSTEM_HISTORY = Symbol("system");
 const DEFAULT_METRICS = {
-  bars: ["util", "vram", "mbw", "temperature", "power", ...SYSTEM_IDS],
-  graphs: ["util", ...SYSTEM_IDS],
+  bars: ["util", "vram"],
+  graphs: ["util"],
 };
 
 function bar(n) {
@@ -133,13 +132,13 @@ function appendMetrics(card, data, samples, timestamp, selected, scope) {
 function gpuCard(device, children, samples, timestamp, selected) {
   const card = element("section", "card");
   const heading = element("div", "card-heading");
-  heading.append(element("h2", "device-label", device.label), element("p", "muted", device.name ?? "—"));
+  heading.append(element("h3", "device-label", device.label), element("p", "muted", device.name ?? "—"));
   card.append(heading);
   appendMetrics(card, device, samples, timestamp, selected, GPU_METRICS);
 
   for (const child of children) {
     const partition = element("section", "mig");
-    partition.append(element("h3", "", child.label), element("p", "muted", child.name ?? "—"));
+    partition.append(element("h4", "", child.label), element("p", "muted", child.name ?? "—"));
     partition.append(...selected.bars.filter((id) => ["util", "vram", "mbw"].includes(id))
       .map((id) => metricBar(id, child)));
     card.append(partition);
@@ -187,6 +186,13 @@ function start(context) {
     let changed = false;
     const inputs = [];
     for (const [id, metric] of Object.entries(METRICS)) {
+      if (id === "util" || id === "cpu") {
+        const group = element("tr", "metric-group");
+        const heading = element("th", "", id === "cpu" ? "System" : "GPU");
+        heading.colSpan = 3;
+        group.append(heading);
+        byId("metric-options").append(group);
+      }
       const row = element("tr");
       const label = element("th", "", metric.label);
       label.scope = "row";
@@ -218,7 +224,7 @@ function start(context) {
       if (stopped || changed || !Array.isArray(saved?.bars) || !Array.isArray(saved?.graphs)) return;
       selected = { bars: [], graphs: [] };
       for (const { input, kind, id } of inputs) {
-        input.checked = saved[kind].includes(id) || (!saved.systemMetrics && SYSTEM_IDS.includes(id));
+        input.checked = saved[kind].includes(id);
         if (input.checked) selected[kind].push(id);
       }
       if (latest) renderCards(latest);
@@ -267,6 +273,7 @@ function start(context) {
 
   function render(sample) {
     const physical = sample.devices.filter((device) => device.parentId === null);
+    byId("gpu-section").hidden = physical.length === 0;
     const timestamp = sample.sampledAt;
     notice.dataset.error = "false";
     root.dataset.stale = "false";
@@ -280,10 +287,17 @@ function start(context) {
         return row;
       }));
       if (ranked.length > 3) devices.append(element("p", "muted", `Top 3 of ${ranked.length} GPUs by utilization`));
-      systemCard.hidden = !sample.system;
+      const systemLabels = [];
       if (sample.system) {
-        systemCard.textContent = `Host CPU ${value(sample.system.cpu, "%")} · System RAM ${value(sample.system.memoryPercent, "%")}`;
+        for (const [id, metric] of Object.entries(SYSTEM_METRICS)) {
+          if (selected.bars.includes(id) || selected.graphs.includes(id)) {
+            systemLabels.push(`${metric.label} ${value(metric.read(sample.system), "%")}`);
+          }
+        }
       }
+      systemCard.textContent = systemLabels.join(" · ");
+      systemCard.hidden = systemLabels.length === 0;
+      byId("system-section").hidden = systemCard.hidden;
       return;
     }
 
@@ -313,11 +327,12 @@ function start(context) {
     }
     if (sample.system) {
       const points = record(SYSTEM_HISTORY, sample.system, SYSTEM_METRICS);
-      systemCard.replaceChildren(element("h2", "", "System"));
+      systemCard.replaceChildren();
       systemCard.hidden = !appendMetrics(systemCard, sample.system, points, timestamp, selected, SYSTEM_METRICS);
     } else {
       systemCard.hidden = true;
     }
+    byId("system-section").hidden = systemCard.hidden;
     devices.replaceChildren(...physical.map((device) => {
       const points = record(device.id, device, GPU_METRICS);
       const children = sample.devices.filter((child) => child.parentId === device.id);
@@ -340,8 +355,12 @@ function start(context) {
       // Read the shared preference so an already-open Work Status follows changes too.
       const revision = intervalRevision;
       await intervalWrite;
-      const saved = await host.storage.get(SAMPLING_KEY).catch(() => undefined);
+      const [saved, metrics] = await Promise.all([
+        host.storage.get(SAMPLING_KEY).catch(() => undefined),
+        compact ? host.storage.get(SETTINGS_KEY).catch(() => undefined) : undefined,
+      ]);
       if (stopped || paused || document.hidden) return;
+      if (compact && Array.isArray(metrics?.bars) && Array.isArray(metrics?.graphs)) selected = metrics;
       if (revision === intervalRevision && isSamplingInterval(saved) && saved !== samplingSeconds) {
         samplingSeconds = saved;
         intervalInput.value = String(saved);

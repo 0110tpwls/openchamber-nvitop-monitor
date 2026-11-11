@@ -30,6 +30,8 @@ A read-only NVIDIA GPU and process monitor for OpenChamber, powered by the nvito
 
 3. Approve **Run a local service**, then open **nvitop GPU Monitor** on the right rail. Use **Metrics** to choose bars and two-minute charts for GPU and host metrics and set the sampling interval from 1 to 60 seconds. The default is 2 seconds, and the interval also applies to the compact **Work Status** view.
 
+System and GPU metrics have separate sections. By default, the GPU section shows utilization and VRAM bars plus the utilization graph. Enable host CPU and RAM under **Metrics → System** to show the System section. Temperature, MBW, power, and fan are off by default. Saved metric choices are restored when you reopen the monitor.
+
 If the panel cannot find nvitop, check the account running OpenChamber and make sure the directory containing the `nvitop` launcher is on the **server's** `PATH`. Restart the server after changing its environment.
 
 ## Development

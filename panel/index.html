@@ -26,8 +26,14 @@
       </table>
     </div>
     <p id="notice" role="status" aria-live="polite">Connecting to OpenChamber…</p>
-    <section id="system" class="card" hidden></section>
-    <div id="devices"></div>
+    <section id="system-section" hidden aria-labelledby="system-title">
+      <h2 id="system-title" class="section-title">System</h2>
+      <div id="system" class="card"></div>
+    </section>
+    <section id="gpu-section" hidden aria-labelledby="gpu-title">
+      <h2 id="gpu-title" class="section-title">GPU</h2>
+      <div id="devices"></div>
+    </section>
     <section id="jobs" hidden aria-labelledby="jobs-title">
       <div class="section-heading">
         <div><h2 id="jobs-title">GPU processes</h2><p id="job-count" class="muted"></p></div>

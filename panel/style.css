@@ -10,8 +10,8 @@
 [hidden] { display: none !important; }
 body { margin: 0; background: transparent; }
 #root { padding: 10px 12px; max-width: 1240px; margin: auto; }
-h2, h3, p { margin: 0; }
-h2, h3 { font-size: 14px; line-height: 1.4; }
+h2, h3, h4, p { margin: 0; }
+h2, h3, h4 { font-size: 14px; line-height: 1.4; }
 .muted { color: var(--muted); font-size: 12px; line-height: 1.45; }
 #toolbar, .section-heading, .card-heading, .metric-label, .chart-label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 #toolbar { margin-bottom: 6px; flex-wrap: wrap; }
@@ -26,6 +26,10 @@ h2, h3 { font-size: 14px; line-height: 1.4; }
 #metric-settings th { white-space: normal; }
 #metric-settings th:nth-child(n+2), #metric-settings td { text-align: center; width: 46px; }
 #metric-settings tr:last-child > * { border-bottom: 0; }
+#metric-settings .metric-group th {
+  text-align: left; font-weight: 700; color: inherit;
+  background: color-mix(in srgb, var(--line) 30%, transparent);
+}
 #metric-settings input[type="checkbox"] { display: block; margin: auto; accent-color: var(--oc-primary, #7b62df); cursor: pointer; }
 .sampling-setting {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
@@ -44,7 +48,8 @@ h2, h3 { font-size: 14px; line-height: 1.4; }
   }
 }
 .card { border: 1px solid var(--line); border-radius: 9px; padding: 10px; min-width: 0; }
-#system { margin-bottom: 8px; }
+.section-title { margin: 0 0 6px; }
+#system-section { margin-bottom: 14px; }
 .card-heading { margin-bottom: 8px; }
 .card-heading p { text-align: right; overflow-wrap: anywhere; }
 .device-label { white-space: nowrap; }
@@ -76,11 +81,13 @@ td { white-space: nowrap; }
 .command-name { display: block; max-width: min(38vw, 520px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 td small { display: block; color: var(--muted); }
 .process-table td { vertical-align: top; }
-#root[data-stale="true"] :is(#system, #devices, #jobs) { opacity: .65; }
+#root[data-stale="true"] :is(#system-section, #gpu-section, #jobs) { opacity: .65; }
 [data-surface="status"] #root { padding: 7px 10px; }
 [data-surface="status"] #toolbar { display: none; }
 [data-surface="status"] #notice { margin-bottom: 4px; }
-[data-surface="status"] #system { border: 0; padding: 0; margin-bottom: 5px; font-size: 11px; }
+[data-surface="status"] #system-section { margin-bottom: 7px; }
+[data-surface="status"] .section-title { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+[data-surface="status"] #system { border: 0; padding: 0; font-size: 11px; }
 [data-surface="status"] #devices { gap: 5px; }
 .status-row { display: grid; grid-template-columns: auto minmax(44px, 1fr) auto; align-items: center; gap: 8px; font-size: 11px; }
 .status-row .track { margin: 0; }
