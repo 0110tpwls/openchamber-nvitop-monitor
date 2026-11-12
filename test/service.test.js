@@ -138,13 +138,13 @@ test("CPU uses consecutive times for the same PID and process start", () => {
   const track = createCpuTracker(() => time);
   const context = (startedAt, cpuTime, deviceId = "gpu") => ({ pid: 123, deviceId, startedAt, cpuTime });
   assert.deepEqual(track({ processes: [context(1, 4)] }).processes, [
-    { pid: 123, deviceId: "gpu", cpu: null },
+    { pid: 123, deviceId: "gpu", startedAt: 1, cpu: null },
   ]);
 
   time = 2_000;
   assert.deepEqual(track({ processes: [context(1, 7), context(1, 7, "mig")] }).processes, [
-    { pid: 123, deviceId: "gpu", cpu: 150 },
-    { pid: 123, deviceId: "mig", cpu: 150 },
+    { pid: 123, deviceId: "gpu", startedAt: 1, cpu: 150 },
+    { pid: 123, deviceId: "mig", startedAt: 1, cpu: 150 },
   ]);
 
   time = 4_000;
@@ -165,8 +165,13 @@ test("service gates endpoints and keeps process details out of Work Status", asy
     processCount: 1,
   };
   const intervals = [];
+  const commandQueries = [];
   const server = createGpuService({
     token: "test",
+    readCommand: async (pid, startedAt) => {
+      commandQueries.push({ pid, startedAt });
+      return { command: "python train.py --data 'a b'" };
+    },
     sample: async (seconds) => {
       intervals.push(seconds);
       return snapshot;
@@ -193,4 +198,10 @@ test("service gates endpoints and keeps process details out of Work Status", asy
   assert.equal((await request("/snapshot?interval=61")).status, 200);
   assert.equal((await request("/snapshot?interval=2.5")).status, 200);
   assert.deepEqual(intervals, [2, 15, 2, 2]);
+  assert.equal((await request("/command?pid=123")).status, 400);
+  assert.equal((await request("/command?pid=0&startedAt=42")).status, 400);
+  assert.equal((await request("/command?pid=123&startedAt=NaN")).status, 400);
+  assert.deepEqual((await request("/command?pid=123&startedAt=42.5")).data,
+    { command: "python train.py --data 'a b'" });
+  assert.deepEqual(commandQueries, [{ pid: 123, startedAt: 42.5 }]);
 });

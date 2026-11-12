@@ -1,4 +1,5 @@
 """Collect a bounded, read-only nvitop snapshot."""
+import argparse
 import json
 import math
 import socket
@@ -126,11 +127,33 @@ def collect(device_class, process_class, process_error):
     }
 
 
-def main():
+def process_command(pid, started_at, process_class, process_error):
     try:
-        from nvitop import Device, GpuProcess, host, libnvml
+        process = process_class(pid)
+        if process.create_time() != started_at or not process.is_running():
+            return {"error": "PROCESS_UNAVAILABLE", "message": "This process has exited or its PID was reused."}
+        command = process.command()
+        if not process.is_running():
+            return {"error": "PROCESS_UNAVAILABLE", "message": "This process has exited."}
+        return {"command": command or process.name()}
+    except process_error:
+        return {"error": "PROCESS_UNAVAILABLE", "message": "The command is unavailable or access was denied."}
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--command", type=int)
+    parser.add_argument("--started-at", type=float)
+    args = parser.parse_args()
+    if (args.command is None) != (args.started_at is None):
+        parser.error("--command and --started-at must be provided together")
+    try:
+        from nvitop import Device, GpuProcess, HostProcess, host, libnvml
     except ImportError:
         return {"error": "NVITOP_MISSING", "message": "Install nvitop in the extension's Python environment."}
+
+    if args.command is not None:
+        return process_command(args.command, args.started_at, HostProcess, host.PsutilError)
 
     try:
         libnvml.nvmlInit()

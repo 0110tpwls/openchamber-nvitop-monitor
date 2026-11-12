@@ -1,6 +1,7 @@
 import { connectHost } from "@openchamber/sdk";
 import { applyHostReady, mountButton, mountSearchField } from "@openchamber/sdk/ui";
 import { DEFAULT_SAMPLING_SECONDS, isSamplingInterval } from "../sampling.mjs";
+import { mountCommandTooltip } from "./command-tooltip.mjs";
 
 const WINDOW_MS = 120_000;
 const SETTINGS_KEY = "gpu-metric-display";
@@ -160,6 +161,7 @@ function start(context) {
   let intervalWrite = Promise.resolve();
   const intervalInput = byId("sampling-interval");
   const history = new Map();
+  const syncCommandTooltip = compact ? () => {} : mountCommandTooltip(byId("processes"), host);
 
   function mountMetricSettings() {
     const button = byId("metric-toggle");
@@ -247,7 +249,10 @@ function start(context) {
       const name = element("td", "command-cell");
       const command = process.command ?? process.name ?? "—";
       const commandLabel = element("span", "command-name", command);
-      commandLabel.title = command;
+      commandLabel.tabIndex = 0;
+      commandLabel.dataset.commandKey = `${process.pid}:${process.startedAt}:${process.deviceId}`;
+      commandLabel.dataset.pid = String(process.pid);
+      commandLabel.dataset.startedAt = String(process.startedAt);
       const gpu = labels.get(process.deviceId) ?? "—";
       const type = process.type ?? "—";
       const sm = value(process.sm, "%");
@@ -269,6 +274,7 @@ function start(context) {
       );
       return row;
     }));
+    syncCommandTooltip();
   }
 
   function render(sample) {

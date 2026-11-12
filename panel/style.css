@@ -78,7 +78,15 @@ th, td { padding: 5px 6px; border-bottom: 1px solid var(--line); }
 th { color: var(--muted); white-space: nowrap; }
 td { white-space: nowrap; }
 .command-cell { white-space: normal; overflow-wrap: anywhere; }
-.command-name { display: block; max-width: min(38vw, 520px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.command-name { display: block; max-width: min(38vw, 520px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: help; }
+#command-tooltip {
+  position: fixed; z-index: 1000; width: max-content; max-width: calc(100vw - 16px);
+  max-height: min(45vh, 320px); overflow: auto; padding: 8px 10px;
+  color: var(--oc-fg, CanvasText); background: var(--oc-elevated, Canvas);
+  border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 3px 14px #0003;
+  font-family: var(--oc-mono, monospace); font-size: 11px; line-height: 1.5;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
 td small { display: block; color: var(--muted); }
 .process-table td { vertical-align: top; }
 #root[data-stale="true"] :is(#system-section, #gpu-section, #jobs) { opacity: .65; }

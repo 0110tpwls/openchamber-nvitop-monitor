@@ -114,7 +114,7 @@ export async function* pythonCandidates({ home = homedir(), env = process.env } 
   }
 }
 
-export async function collect() {
+export async function collect(args = []) {
   if (process.platform !== "linux") {
     return { error: "UNSUPPORTED_OS", message: "Connect to an OpenChamber server running on a Linux NVIDIA host." };
   }
@@ -122,12 +122,12 @@ export async function collect() {
   return collectWithPython(pythonCandidates(), async (python) => {
     const { PATH, HOME, LANG, LC_ALL } = process.env;
     // Ignore PYTHON* variables while retaining the site directory used by pip --user.
-    const { stdout } = await exec(python, ["-E", collector], {
+    const { stdout } = await exec(python, ["-E", collector, ...args], {
       env: { PATH, HOME, LANG, LC_ALL },
       encoding: "utf8",
       timeout: 5_000,
       killSignal: "SIGKILL",
-      maxBuffer: 512 * 1024,
+      maxBuffer: args.length ? 4 * 1024 * 1024 : 512 * 1024,
     });
     return JSON.parse(stdout);
   });
@@ -172,7 +172,7 @@ export function createCpuTracker(now = () => performance.now()) {
           cpu = (cpuTime - baseline.cpuTime) * 100 / elapsed;
         }
       }
-      return { ...process, cpu };
+      return { ...process, startedAt, cpu };
     });
     previous = current;
     previousTime = time;
@@ -201,7 +201,10 @@ function json(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
-export function createGpuService({ token, sample }) {
+export function createGpuService({
+  token, sample,
+  readCommand = (pid, startedAt) => collect(["--command", String(pid), "--started-at", String(startedAt)]),
+}) {
   if (!token) throw new Error("Missing OpenChamber service token");
   const trackCpu = createCpuTracker();
   sample ??= createSampler(async () => trackCpu(await collect()));
@@ -210,10 +213,20 @@ export function createGpuService({ token, sample }) {
     if (req.method !== "GET") return json(res, 405, { error: "METHOD_NOT_ALLOWED" });
     const [path, query] = (req.url ?? "").split("?", 2);
     if (path === "/health") return json(res, 200, { ok: true });
-    if (path !== "/snapshot" && path !== "/summary") return json(res, 404, { error: "NOT_FOUND" });
+    if (!["/snapshot", "/summary", "/command"].includes(path)) return json(res, 404, { error: "NOT_FOUND" });
 
     try {
-      const seconds = Number(new URLSearchParams(query).get("interval"));
+      const params = new URLSearchParams(query);
+      if (path === "/command") {
+        const pid = Number(params.get("pid"));
+        const startedAt = Number(params.get("startedAt"));
+        if (!Number.isSafeInteger(pid) || pid <= 0 || !Number.isFinite(startedAt) || startedAt <= 0) {
+          return json(res, 400, { error: "INVALID_PROCESS", message: "A PID and process start time are required." });
+        }
+        const data = await readCommand(pid, startedAt);
+        return json(res, data.error ? 503 : 200, data);
+      }
+      const seconds = Number(params.get("interval"));
       const data = await sample(isSamplingInterval(seconds) ? seconds : DEFAULT_SAMPLING_SECONDS);
       if (data.error) return json(res, 503, data);
       if (path === "/summary") {

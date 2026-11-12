@@ -3,7 +3,7 @@ from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from service.collect import collect, number, system_metrics
+from service.collect import collect, number, process_command, system_metrics
 
 
 def device(index, uuid, processes=(), children=()):
@@ -41,6 +41,21 @@ def job(pid, memory):
 
 
 class CollectorTest(unittest.TestCase):
+    def test_full_command_is_not_truncated_and_checks_process_identity(self):
+        process = Mock()
+        process.create_time.return_value = 123.5
+        process.is_running.return_value = True
+        command = "python train.py --data " + "x" * 1024
+        process.command.return_value = command
+        factory = Mock(return_value=process)
+        self.assertEqual(process_command(7, 123.5, factory, OSError), {"command": command})
+
+        process.command.reset_mock()
+        self.assertEqual(process_command(7, 124, factory, OSError)["error"], "PROCESS_UNAVAILABLE")
+        process.command.assert_not_called()
+        process.create_time.side_effect = PermissionError()
+        self.assertEqual(process_command(7, 123.5, factory, OSError)["error"], "PROCESS_UNAVAILABLE")
+
     def test_system_cpu_and_memory_match_nvitop_host_values(self):
         host = Mock(PsutilError=RuntimeError)
         host.cpu_percent.return_value = 0.0

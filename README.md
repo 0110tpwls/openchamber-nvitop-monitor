@@ -32,6 +32,8 @@ A read-only NVIDIA GPU and process monitor for OpenChamber, powered by the nvito
 
 System and GPU metrics have separate sections. By default, the GPU section shows utilization and VRAM bars plus the utilization graph. Enable host CPU and RAM under **Metrics → System** to show the System section. Temperature, MBW, power, and fan are off by default. Saved metric choices are restored when you reopen the monitor.
 
+Hover over a process's Command cell, or focus it with the keyboard, to read its full command line including arguments. The tooltip wraps long commands and stays visible across sampling updates.
+
 If the panel cannot find nvitop, check the account running OpenChamber and make sure the directory containing the `nvitop` launcher is on the **server's** `PATH`. Restart the server after changing its environment.
 
 ## Development
